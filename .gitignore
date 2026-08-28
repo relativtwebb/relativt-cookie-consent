@@ -1,0 +1,15 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editorer
+.idea/
+.vscode/
+*.swp
+
+# Byggen
+/*.zip
+
+# Beroenden (pluginet har inga, men ifall något läggs till lokalt)
+/node_modules/
+/vendor/

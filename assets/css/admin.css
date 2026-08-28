@@ -1,0 +1,25 @@
+/* Relativt Cookie Consent – inställningssidan i WP-admin */
+
+.rcc-settings .rcc-version {
+	font-size: 13px;
+	font-weight: 400;
+	color: #646970;
+	margin-left: 6px;
+}
+
+.rcc-settings .rcc-tabs {
+	margin-top: 16px;
+}
+
+.rcc-settings .rcc-tab-panel[hidden] {
+	display: none;
+}
+
+.rcc-settings .rcc-tab-panel > h2.title:first-child {
+	margin-top: 1.5em;
+}
+
+.rcc-settings textarea.code {
+	font-family: Consolas, Monaco, monospace;
+	font-size: 13px;
+}

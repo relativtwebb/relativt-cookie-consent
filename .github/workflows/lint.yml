@@ -1,0 +1,63 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  php:
+    name: PHP ${{ matrix.php }} syntax
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sätt upp PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: php -l på alla filer
+        run: |
+          set -e
+          find . -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  js:
+    name: JavaScript syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: node --check på alla filer
+        run: |
+          set -e
+          for f in assets/js/*.js; do node --check "$f"; done
+
+  version:
+    name: Versionsnummer i synk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Jämför plugin-huvud, RCC_VERSION och readme.txt
+        run: |
+          set -e
+          HEADER=$(grep -E '^\s*\*\s*Version:' relativt-cookie-consent.php | head -1 | sed -E 's/.*Version:\s*//' | tr -d '[:space:]')
+          CONST=$(grep -E "define\( 'RCC_VERSION'" relativt-cookie-consent.php | sed -E "s/.*'RCC_VERSION',\s*'([^']+)'.*/\1/")
+          STABLE=$(grep -E '^Stable tag:' readme.txt | sed -E 's/Stable tag:\s*//' | tr -d '[:space:]')
+          echo "Plugin-huvud: $HEADER"
+          echo "RCC_VERSION:  $CONST"
+          echo "readme.txt:   $STABLE"
+          if [ "$HEADER" != "$CONST" ] || [ "$HEADER" != "$STABLE" ]; then
+            echo "::error::Versionsnumren skiljer sig åt. Uppdatera alla tre ställen."
+            exit 1
+          fi

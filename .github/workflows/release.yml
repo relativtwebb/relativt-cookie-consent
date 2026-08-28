@@ -1,0 +1,78 @@
+name: Release
+
+# Körs när en tagg på formen v1.2.3 pushas. Bygger plugin-zippen och
+# skapar en GitHub Release med zippen som bilaga. Uppdateraren i pluginet
+# hämtar sedan den releasen på kundsajterna.
+#
+#   git tag v1.2.3
+#   git push origin v1.2.3
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Bygg zip och skapa release
+    runs-on: ubuntu-latest
+    env:
+      SLUG: relativt-cookie-consent
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Kontrollera att taggen matchar pluginets version
+        run: |
+          set -e
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          HEADER=$(grep -E '^\s*\*\s*Version:' "$SLUG.php" | head -1 | sed -E 's/.*Version:\s*//' | tr -d '[:space:]')
+          CONST=$(grep -E "define\( 'RCC_VERSION'" "$SLUG.php" | sed -E "s/.*'RCC_VERSION',\s*'([^']+)'.*/\1/")
+          echo "Tagg: $TAG_VERSION, plugin-huvud: $HEADER, RCC_VERSION: $CONST"
+          if [ "$TAG_VERSION" != "$HEADER" ] || [ "$TAG_VERSION" != "$CONST" ]; then
+            echo "::error::Taggen v$TAG_VERSION matchar inte versionen i $SLUG.php. Höj versionen, committa och tagga om."
+            exit 1
+          fi
+
+      - name: Syntaxkontroll
+        run: |
+          set -e
+          find . -name '*.php' -print0 | xargs -0 -n1 php -l
+          for f in assets/js/*.js; do node --check "$f"; done
+
+      - name: Bygg zip
+        # git archive utelämnar filerna märkta export-ignore i .gitattributes
+        # (.github, README.md, CHANGELOG.md m.fl.) och lägger allt i mappen
+        # relativt-cookie-consent/ som WordPress förväntar sig.
+        run: |
+          set -e
+          git archive --format=zip --prefix="$SLUG/" -o "$SLUG.zip" "$GITHUB_REF_NAME"
+          unzip -l "$SLUG.zip"
+
+      - name: Plocka ut release-texten ur CHANGELOG.md
+        id: notes
+        run: |
+          set -e
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            /^## / { if (found) exit; if (index($0, "[" ver "]") || index($0, " " ver " ") || $0 ~ ("^## " ver "$")) { found=1; next } }
+            found { print }
+          ' CHANGELOG.md > release-notes.md || true
+          if [ ! -s release-notes.md ]; then
+            echo "Ingen sektion för $VERSION i CHANGELOG.md, använder GitHubs automatiska text."
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+            echo "--- Release-text ---"; cat release-notes.md
+          fi
+
+      - name: Skapa GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: ${{ steps.notes.outputs.generate == 'false' && 'release-notes.md' || '' }}
+          generate_release_notes: ${{ steps.notes.outputs.generate == 'true' }}
+          files: ${{ env.SLUG }}.zip
+          fail_on_unmatched_files: true
