@@ -23,3 +23,49 @@
 	font-family: Consolas, Monaco, monospace;
 	font-size: 13px;
 }
+
+/* Samtyckesloggen */
+
+.rcc-consent-log .rcc-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 12px;
+	line-height: 1.6;
+	font-weight: 500;
+}
+
+.rcc-consent-log .rcc-badge--accepted {
+	background: #e3f5e8;
+	color: #1a6b32;
+}
+
+.rcc-consent-log .rcc-badge--rejected {
+	background: #fbe4e4;
+	color: #a32020;
+}
+
+.rcc-consent-log .rcc-badge--partial {
+	background: #e5f0fb;
+	color: #1d5aa8;
+}
+
+.rcc-consent-log .rcc-muted {
+	color: #8c8f94;
+}
+
+.rcc-consent-log .rcc-inline-form {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0 0 10px;
+}
+
+.rcc-consent-log .column-consent_id {
+	width: 22%;
+}
+
+.rcc-consent-log .column-status,
+.rcc-consent-log .column-country {
+	width: 9%;
+}

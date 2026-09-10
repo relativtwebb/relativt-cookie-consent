@@ -12,6 +12,8 @@ Byggt av [Relativt](https://relativt.se) för våra kundsajter. Fritt att använ
 - Skickar Google Consent Mode v2-signaler (`denied` som utgångsläge, `update` vid val) och ett dataLayer-event för GTM-triggers.
 - Blockerar YouTube- och Vimeo-iframes sajtbrett, även i sidbyggare som Oxygen, Elementor och Bricks, genom att skriva om sidans HTML innan den skickas till besökaren. En "Visa innehåll"-knapp ersätter videon tills rätt samtycke finns.
 - Låter varje sajt styra utseendet (layout, färger, radie, typsnitt, egen CSS) och alla texter från WP-admin.
+- Loggar varje samtycke i en egen tabell (samtyckes-ID, tidpunkt, kategorier, land, version) som bevis enligt GDPR art. 7.1, med sökning, filter och CSV-export under Inställningar → Samtyckeslogg. Poster gallras automatiskt.
+- Har en samtyckesversion: höj siffran när ni lägger till verktyg eller ändrar texter, så får alla besökare rutan på nytt.
 - Hämtar nya versioner från det här repots GitHub Releases och visar dem under Uppdateringar i WP-admin.
 
 ## Så ser det ut
@@ -66,6 +68,14 @@ Två lägen under Verktyg:
 
 **Alltid, med Consent Mode v2.** Containern laddas direkt. Pluginet skickar `gtag('consent', 'default', ...)` med allt nekat innan GTM laddas och `gtag('consent', 'update', ...)` när besökaren väljer. Dessutom pushas eventet `rcc_consent_update` till dataLayer med variablerna `rcc_statistics` och `rcc_marketing` (true/false), som ni kan använda som trigger. I det här läget måste varje tagg i GTM ha "Ytterligare samtycke krävs" eller inbyggda samtyckeskontroller, annars sätter de cookies utan samtycke.
 
+## Samtyckeslogg och samtyckesversion
+
+Varje val besökaren gör skickas till `POST /wp-json/rcc/v1/consent` och sparas i tabellen `{prefix}rcc_consent_log`. Raden innehåller ett slumpat samtyckes-ID (ligger i cookien och visas för besökaren under kategorierna i cookie-inställningarna), tidpunkt (UTC), status (accepterat/avvisat/delvis), valda kategorier, land, samtyckesversion, plugin-version och webbläsarsträng. IP-adress sparas bara som saltad hash och bara om inställningen är påslagen.
+
+Vid en förfrågan från en besökare: be om samtyckes-ID:t, sök på det under Inställningar → Samtyckeslogg, och exportera vid behov som CSV. Poster äldre än inställd gallringstid (standard 12 månader) raderas av ett dagligt cron-jobb; "Gallra nu" kör samma sak direkt.
+
+**Samtyckesversion** (Allmänt-fliken) är ett heltal som sparas i cookien. Höj det med ett när sajten får ett nytt verktyg eller när texterna i rutan ändras – besökare med äldre version får rutan igen, och tidigare samtycken slutar gälla tills de tagit ställning på nytt. ID:t behålls så att loggen visar hela historiken. Cookies från version 1.0.0 saknar versionsnummer och räknas som version 1.
+
 ## Länkar till cookie-inställningarna
 
 Besökaren ska kunna ändra sitt val när som helst. Tre sätt:
@@ -92,8 +102,9 @@ Block som blandar `<script>` och andra taggar (t.ex. `<img>`) markeras med `data
 ### JavaScript-API
 
 ```js
-window.rcc.getConsent();          // { necessary: true, statistics: false, marketing: true, timestamp: "..." } eller null
+window.rcc.getConsent();          // { necessary: true, statistics: false, marketing: true } eller null (även när versionen är inaktuell)
 window.rcc.hasConsent( 'marketing' );
+window.rcc.getConsentId();        // samtyckes-ID:t från cookien, eller null
 window.rcc.openSettings();        // öppnar rutan med kategorivalen
 window.rcc.acceptAll();
 window.rcc.rejectAll();
@@ -120,6 +131,10 @@ document.addEventListener( 'rcc_consent_updated', function ( e ) {
 | `rcc_cookie_icon_svg` | filter | Ikonen på den flytande knappen. |
 | `rcc_enable_github_updates` | filter | Returnera false för att stänga av uppdateringskontrollen. |
 | `rcc_github_token` | filter | Alternativ till konstanten `RCC_GITHUB_TOKEN`. |
+| `rcc_consent_log_enabled` | filter | Returnera false för att stänga av loggningen i kod (t.ex. på staging). |
+| `rcc_consent_log_country` | filter | Egen landsuppslagning om servern inte skickar `CF-IPCountry` eller motsvarande. |
+| `rcc_consent_log_record` | filter | Ändra raden innan den sparas, eller returnera en tom array för att hoppa över den. |
+| `rcc_consent_logged` | action | Körs efter att en rad sparats (rad-ID, raden). |
 | `rcc_gated_scripts` | action | Skriv ut egna blockerade skript i `<head>`. |
 | `rcc_banner_top`, `rcc_banner_bottom` | action | Egen markup i rutan, t.ex. en logotyp. |
 
@@ -164,6 +179,8 @@ Workflowet vägrar bygga om taggen inte matchar versionen i pluginet.
 - **Video-gatingen** är ett bästa-möjliga-skydd. Testa på en sida med inbäddad video. Lazy-laddade iframes som använder `data-src` i stället för `src` fångas inte.
 - **Egen kod** som klistras in måste själv respektera kategorin den ligger under.
 - **Samtyckets giltighetstid**: standard 180 dagar. IMY rekommenderar att samtycke inhämtas på nytt åtminstone årligen.
+- **Samtyckesloggen** är en personuppgiftsbehandling i sig (pseudonymiserad). Nämn den i integritetspolicyn, särskilt om IP-hash är påslagen, och sätt gallringstiden så att den inte är kortare än samtyckets giltighetstid.
+- **Land i loggen** kräver att servern eller CDN:et skickar en landsheader (Cloudflare gör det automatiskt). Annars blir kolumnen tom.
 
 ## Utveckling
 
@@ -184,10 +201,12 @@ Filstruktur:
 
 ```
 relativt-cookie-consent.php        Huvudfil: konstanter, aktivering, uppdaterare
-uninstall.php                      Städar bort inställningar vid radering
+uninstall.php                      Städar bort inställningar, loggtabell och cron vid radering
 includes/settings.php              Standardvärden, sanering, inställningssidan
 includes/vendors.php               Skripten för varje verktyg
 includes/frontend.php              Banner, video-gating, kortkod, tillgångar
+includes/consent-log.php           Loggtabell, REST-endpoint, gallring (cron)
+includes/admin-consent-log.php     Sidan Samtyckeslogg: lista, filter, CSV-export
 includes/class-rcc-github-updater.php  Uppdateringar från GitHub Releases
 assets/css/relativt-cookie-consent.css Frontend-styling (CSS-variabler)
 assets/js/relativt-cookie-consent.js   Frontend-logik och JS-API

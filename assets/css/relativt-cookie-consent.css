@@ -418,3 +418,23 @@ html.rcc-lock body {
 		transition: none;
 	}
 }
+
+/* Samtyckes-ID under kategorierna när inställningarna öppnas */
+.rcc-banner__meta {
+	margin: 12px 0 0;
+	font-size: 0.8em;
+	opacity: 0.75;
+}
+
+.rcc-banner__meta[hidden] {
+	display: none;
+}
+
+.rcc-banner__meta code {
+	font-family: Consolas, Monaco, monospace;
+	font-size: 1em;
+	background: transparent;
+	padding: 0;
+	color: inherit;
+	user-select: all;
+}

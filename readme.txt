@@ -4,7 +4,7 @@ Tags: cookies, consent, gdpr, google analytics, google tag manager, meta pixel
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -21,6 +21,8 @@ Relativt Cookie Consent visar en cookie-ruta med tre kategorier och ser till att
 Google Tag Manager kan antingen blockeras tills samtycke eller laddas direkt och styras via Google Consent Mode v2. Verktyg som saknar eget fält klistras in under "Egen kod" per kategori.
 
 YouTube- och Vimeo-inbäddningar blockeras sajtbrett, även när de ligger i sidbyggare som Oxygen, Elementor eller Bricks. En "Visa innehåll"-knapp ersätter videon tills rätt kategori är godkänd.
+
+Varje samtycke loggas (samtyckes-ID, tidpunkt, kategorier, land, version) som bevis enligt GDPR, med sökning, filter och CSV-export under Inställningar → Samtyckeslogg. En samtyckesversion gör att alla besökare tillfrågas på nytt när ni lägger till verktyg eller ändrar texter.
 
 Utseendet (layout, färger, radie, typsnitt) och alla texter ställs in per sajt. Nya versioner hämtas från GitHub och installeras via Uppdateringar i WP-admin.
 
@@ -48,6 +50,12 @@ Redan laddade skript kan inte "avladdas", men inga nya anrop görs. Under Allmä
 Lägg `define( 'RCC_GITHUB_TOKEN', 'github_pat_...' );` i wp-config.php. En fine-grained token med läsrättighet till Contents räcker.
 
 == Changelog ==
+
+= 1.1.0 =
+* Samtyckeslogg med sökning, filter, CSV-export och automatisk gallring.
+* Samtyckesversion som tvingar fram nytt samtycke när verktyg eller texter ändras.
+* Besökaren ser sitt samtyckes-ID i cookie-inställningarna.
+* Nytt JS-API: window.rcc.getConsentId(). Nya filter för loggen.
 
 = 1.0.0 =
 * Första versionen.

@@ -5,6 +5,10 @@
  * (<script type="text/plain" data-cookiecategory="...">) och blockerade
  * iframes, samt styr banner-UI:t. Ingen jQuery eller andra beroenden.
  *
+ * Samtyckescookien innehåller ett slumpat ID och versionsnumret från
+ * inställningen "Samtyckesversion". Är versionen äldre än sajtens visas
+ * rutan igen. Varje val rapporteras till samtyckesloggen (REST).
+ *
  * Publikt API: window.rcc (se längst ner).
  * Event: "rcc_consent_updated" på document (detail = samtyckesobjektet)
  * samt dataLayer-eventet "rcc_consent_update" för Google Tag Manager.
@@ -17,10 +21,12 @@
 	var EXPIRY_DAYS = parseInt( settings.cookieExpiryDays, 10 ) || 180;
 	var RELOAD_ON_REVOKE = !! settings.reloadOnRevoke;
 	var USE_BACKDROP = !! settings.backdrop;
+	var CONSENT_VERSION = parseInt( settings.consentVersion, 10 ) || 1;
+	var LOG_ENDPOINT = settings.logEndpoint || '';
 	var i18n = settings.i18n || {};
 	var CATEGORIES = [ 'statistics', 'marketing' ];
 
-	var banner, backdrop, categoriesEl, toggleBtn, saveBtn, rejectBtn, acceptBtn, reopenBtn, statsInput, marketingInput;
+	var banner, backdrop, categoriesEl, toggleBtn, saveBtn, rejectBtn, acceptBtn, reopenBtn, statsInput, marketingInput, metaEl, metaIdEl, metaDateEl;
 	var lastFocused = null;
 
 	/* ---------------------------------------------------------------
@@ -38,6 +44,38 @@
 		} catch ( e ) {
 			return null;
 		}
+	}
+
+	/**
+	 * Cookies från före versionshanteringen saknar version och räknas
+	 * som version 1, så en uppdatering av pluginet i sig tvingar inte
+	 * fram nya samtycken.
+	 */
+	function isCurrent( consent ) {
+		return !! consent && ( parseInt( consent.version, 10 ) || 1 ) === CONSENT_VERSION;
+	}
+
+	function currentConsent() {
+		var c = getConsent();
+		return isCurrent( c ) ? c : null;
+	}
+
+	function generateId() {
+		var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+		var out = '';
+		var i;
+		if ( window.crypto && window.crypto.getRandomValues ) {
+			var buf = new Uint8Array( 20 );
+			window.crypto.getRandomValues( buf );
+			for ( i = 0; i < buf.length; i++ ) {
+				out += chars.charAt( buf[ i ] % chars.length );
+			}
+		} else {
+			for ( i = 0; i < 20; i++ ) {
+				out += chars.charAt( Math.floor( Math.random() * chars.length ) );
+			}
+		}
+		return out;
 	}
 
 	function writeCookie( consent ) {
@@ -67,12 +105,15 @@
 	function setConsent( input ) {
 		var previous = getConsent();
 		var consent = normalize( input );
+		consent.id = ( previous && previous.id ) ? previous.id : generateId();
+		consent.version = CONSENT_VERSION;
 		consent.timestamp = new Date().toISOString();
 
 		writeCookie( consent );
+		logConsent( consent );
 
 		var revoked = false;
-		if ( previous ) {
+		if ( isCurrent( previous ) ) {
 			CATEGORIES.forEach( function ( cat ) {
 				if ( previous[ cat ] && ! consent[ cat ] ) {
 					revoked = true;
@@ -92,6 +133,70 @@
 		}
 
 		return consent;
+	}
+
+	/* ---------------------------------------------------------------
+	 * Samtyckeslogg
+	 * ------------------------------------------------------------ */
+
+	/**
+	 * Rapporterar valet till REST-endpointen. Körs i bakgrunden och får
+	 * aldrig blockera eller påverka UI:t; keepalive gör att anropet
+	 * överlever en omladdning direkt efter valet.
+	 */
+	function logConsent( consent ) {
+		if ( ! LOG_ENDPOINT ) {
+			return;
+		}
+		var payload = JSON.stringify( {
+			id: consent.id,
+			statistics: !! consent.statistics,
+			marketing: !! consent.marketing,
+			version: CONSENT_VERSION
+		} );
+
+		try {
+			if ( window.fetch ) {
+				window.fetch( LOG_ENDPOINT, {
+					method: 'POST',
+					credentials: 'omit',
+					keepalive: true,
+					headers: { 'Content-Type': 'application/json' },
+					body: payload
+				} ).catch( function () {} );
+			} else if ( window.XMLHttpRequest ) {
+				var xhr = new XMLHttpRequest();
+				xhr.open( 'POST', LOG_ENDPOINT, true );
+				xhr.setRequestHeader( 'Content-Type', 'application/json' );
+				xhr.send( payload );
+			}
+		} catch ( e ) {
+			// Loggning är best effort.
+		}
+	}
+
+	function formatDate( iso ) {
+		var d = iso ? new Date( iso ) : null;
+		if ( ! d || isNaN( d.getTime() ) ) {
+			return '';
+		}
+		var pad = function ( n ) {
+			return ( n < 10 ? '0' : '' ) + n;
+		};
+		return d.getFullYear() + '-' + pad( d.getMonth() + 1 ) + '-' + pad( d.getDate() ) + ' ' + pad( d.getHours() ) + ':' + pad( d.getMinutes() );
+	}
+
+	function updateMeta( consent ) {
+		if ( ! metaEl ) {
+			return;
+		}
+		if ( consent && consent.id ) {
+			metaIdEl.textContent = consent.id;
+			metaDateEl.textContent = formatDate( consent.timestamp );
+			metaEl.hidden = false;
+		} else {
+			metaEl.hidden = true;
+		}
 	}
 
 	/* ---------------------------------------------------------------
@@ -254,7 +359,7 @@
 		btn.textContent = text;
 
 		btn.addEventListener( 'click', function () {
-			var current = normalize( getConsent() );
+			var current = normalize( currentConsent() );
 			current[ category ] = true;
 			setConsent( current );
 		} );
@@ -285,7 +390,7 @@
 			scheduled = true;
 			window.setTimeout( function () {
 				scheduled = false;
-				activateGatedIframes( getConsent() );
+				activateGatedIframes( currentConsent() );
 			}, 50 );
 		} );
 		observer.observe( document.body, { childList: true, subtree: true } );
@@ -350,6 +455,7 @@
 	}
 
 	function openSettingsPanel( consent ) {
+		updateMeta( consent );
 		consent = normalize( consent );
 		if ( statsInput ) {
 			statsInput.checked = consent.statistics;
@@ -362,7 +468,7 @@
 	}
 
 	function openSettings() {
-		openSettingsPanel( getConsent() );
+		openSettingsPanel( currentConsent() );
 	}
 
 	function acceptAll() {
@@ -394,8 +500,14 @@
 		reopenBtn = document.getElementById( 'rcc-reopen' );
 		statsInput = document.getElementById( 'rcc-cat-statistics' );
 		marketingInput = document.getElementById( 'rcc-cat-marketing' );
+		metaEl = document.getElementById( 'rcc-consent-meta' );
+		metaIdEl = document.getElementById( 'rcc-consent-id' );
+		metaDateEl = document.getElementById( 'rcc-consent-date' );
 
-		var existing = getConsent();
+		// Ett samtycke med äldre version gäller inte: skript förblir
+		// blockerade och rutan visas igen, men ID:t behålls så att
+		// loggen visar hela historiken.
+		var existing = currentConsent();
 
 		activateGatedIframes( existing );
 		observeNewIframes();
@@ -417,7 +529,7 @@
 			toggleBtn.addEventListener( 'click', function () {
 				var open = categoriesEl ? categoriesEl.hidden : true;
 				if ( open ) {
-					openSettingsPanel( getConsent() );
+					openSettingsPanel( currentConsent() );
 				} else {
 					setPanelOpen( false );
 				}
@@ -447,7 +559,7 @@
 		// Escape stänger rutan, men bara om ett val redan finns – annars
 		// ska besökaren ta ställning.
 		document.addEventListener( 'keydown', function ( e ) {
-			if ( 'Escape' === e.key && banner && ! banner.hidden && getConsent() ) {
+			if ( 'Escape' === e.key && banner && ! banner.hidden && currentConsent() ) {
 				hideBanner();
 			}
 		} );
@@ -459,12 +571,16 @@
 
 	window.rcc = {
 		getConsent: function () {
-			var c = getConsent();
+			var c = currentConsent();
 			return c ? normalize( c ) : null;
 		},
 		hasConsent: function ( category ) {
-			var c = getConsent();
+			var c = currentConsent();
 			return !! ( c && c[ category ] );
+		},
+		getConsentId: function () {
+			var c = getConsent();
+			return ( c && c.id ) ? c.id : null;
 		},
 		openSettings: openSettings,
 		acceptAll: acceptAll,
@@ -475,7 +591,7 @@
 			return saved;
 		},
 		refreshIframes: function () {
-			activateGatedIframes( getConsent() );
+			activateGatedIframes( currentConsent() );
 		}
 	};
 

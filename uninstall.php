@@ -1,7 +1,8 @@
 <?php
 /**
  * Körs när pluginet raderas via WP-admin (inte vid avaktivering).
- * Tar bort sparade inställningar och uppdaterarens cache.
+ * Tar bort sparade inställningar, samtyckesloggen, cron-jobbet och
+ * uppdaterarens cache.
  */
 
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
@@ -9,7 +10,11 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 }
 
 function rcc_uninstall_cleanup_site() {
+	global $wpdb;
+	$wpdb->query( 'DROP TABLE IF EXISTS ' . $wpdb->prefix . 'rcc_consent_log' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	wp_clear_scheduled_hook( 'rcc_consent_log_cleanup' );
 	delete_option( 'rcc_settings' );
+	delete_option( 'rcc_db_version' );
 	delete_site_transient( 'rcc_github_release' );
 	delete_transient( 'rcc_github_release' );
 }

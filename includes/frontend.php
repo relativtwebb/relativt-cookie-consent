@@ -153,6 +153,8 @@ function rcc_enqueue_assets() {
 	$config = array(
 		'cookieName'       => rcc_cookie_name(),
 		'cookieExpiryDays' => (int) $s['cookie_expiry_days'],
+		'consentVersion'   => max( 1, (int) $s['consent_version'] ),
+		'logEndpoint'      => rcc_consent_log_enabled() ? esc_url_raw( rest_url( 'rcc/v1/consent' ) ) : '',
 		'reloadOnRevoke'   => ! empty( $s['reload_on_revoke'] ),
 		'backdrop'         => ( ! empty( $s['show_backdrop'] ) || 'center' === $s['banner_layout'] ),
 		'i18n'             => array(
@@ -228,6 +230,9 @@ function rcc_render_banner() {
 					</div>
 					<p><?php echo esc_html( $s['marketing_desc'] ); ?></p>
 				</div>
+				<?php if ( '' !== trim( (string) $s['consent_id_label'] ) ) : ?>
+					<p class="rcc-banner__meta" id="rcc-consent-meta" hidden><?php echo esc_html( $s['consent_id_label'] ); ?>: <code id="rcc-consent-id"></code> <span id="rcc-consent-date"></span></p>
+				<?php endif; ?>
 			</div>
 
 			<div class="rcc-banner__actions">

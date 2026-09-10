@@ -52,6 +52,12 @@ function rcc_default_settings() {
 		'show_floating_button'     => 1,
 		'floating_button_position' => 'left',
 
+		// Samtyckesversion och logg.
+		'consent_version'              => 1,
+		'consent_log_enabled'          => 1,
+		'consent_log_retention_months' => 12,
+		'consent_log_ip_hash'          => 0,
+
 		// Texter i cookie-rutan.
 		'banner_heading'      => 'Vi använder cookies',
 		'banner_text'         => 'Vi använder cookies för att webbplatsen ska fungera, för att analysera trafik och besökarbeteende, samt för att mäta och rikta marknadsföring. Nödvändiga cookies sätts alltid. Statistik- och marknadsföringscookies sätts bara om du samtycker. Du kan när som helst ändra ditt val via cookie-inställningarna.',
@@ -67,6 +73,7 @@ function rcc_default_settings() {
 		'btn_customize'       => 'Anpassa val',
 		'btn_save'            => 'Spara inställningar',
 		'floating_button_label' => 'Cookie-inställningar',
+		'consent_id_label'      => 'Ditt samtyckes-ID',
 		'video_overlay_text'    => 'Visa innehåll',
 		'video_overlay_requires' => 'kräver samtycke till',
 
@@ -128,6 +135,11 @@ function rcc_settings_schema() {
 		'show_floating_button'     => array( 'type' => 'checkbox' ),
 		'floating_button_position' => array( 'type' => 'select', 'options' => array( 'left', 'right' ) ),
 
+		'consent_version'              => array( 'type' => 'int', 'min' => 1, 'max' => 9999 ),
+		'consent_log_enabled'          => array( 'type' => 'checkbox' ),
+		'consent_log_retention_months' => array( 'type' => 'int', 'min' => 1, 'max' => 120 ),
+		'consent_log_ip_hash'          => array( 'type' => 'checkbox' ),
+
 		'banner_heading'         => array( 'type' => 'text' ),
 		'banner_text'            => array( 'type' => 'textarea' ),
 		'privacy_link_text'      => array( 'type' => 'text' ),
@@ -142,6 +154,7 @@ function rcc_settings_schema() {
 		'btn_customize'          => array( 'type' => 'text' ),
 		'btn_save'               => array( 'type' => 'text' ),
 		'floating_button_label'  => array( 'type' => 'text' ),
+		'consent_id_label'       => array( 'type' => 'text' ),
 		'video_overlay_text'     => array( 'type' => 'text' ),
 		'video_overlay_requires' => array( 'type' => 'text' ),
 
@@ -524,6 +537,7 @@ function rcc_render_settings_page() {
 					rcc_field_text( $s, 'btn_customize', 'Anpassa val' );
 					rcc_field_text( $s, 'btn_save', 'Spara inställningar' );
 					rcc_field_text( $s, 'floating_button_label', 'Flytande knapp (skärmläsartext)', array( 'description' => 'Används också som standardtext för kortkoden <code>[relativt_cookie_settings]</code>.' ) );
+					rcc_field_text( $s, 'consent_id_label', 'Samtyckes-ID – etikett', array( 'description' => 'Visas under kategorierna när en besökare öppnar sina cookie-inställningar, följt av ID:t och tidpunkten för valet. Lämna tom för att inte visa ID:t.' ) );
 					?>
 				</table>
 
@@ -582,6 +596,23 @@ function rcc_render_settings_page() {
 						'left'  => 'Nere till vänster',
 						'right' => 'Nere till höger',
 					) );
+					?>
+				</table>
+
+				<h2 class="title">Samtyckesversion</h2>
+				<table class="form-table" role="presentation">
+					<?php
+					rcc_field_text( $s, 'consent_version', 'Aktuell version', array( 'type' => 'number', 'class' => 'small-text', 'attrs' => 'min="1" max="9999"', 'description' => 'Höj siffran med ett när ni lägger till ett nytt verktyg eller ändrar texterna i cookie-rutan. Alla besökare med ett äldre samtycke får då rutan på nytt och måste ta ställning igen. Versionen sparas i varje loggpost så att det syns vilken uppsättning verktyg och texter samtycket gällde.' ) );
+					?>
+				</table>
+
+				<h2 class="title">Samtyckeslogg</h2>
+				<p>Loggen sparar varje val som bevis på att samtycke inhämtats (GDPR art. 7.1). Visas under <a href="<?php echo esc_url( admin_url( 'options-general.php?page=relativt-cookie-consent-log' ) ); ?>">Inställningar → Samtyckeslogg</a> där den också kan exporteras som CSV.</p>
+				<table class="form-table" role="presentation">
+					<?php
+					rcc_field_checkbox( $s, 'consent_log_enabled', 'Loggning', 'Spara besökarnas val i samtyckesloggen', 'Sparas: slumpat samtyckes-ID, tidpunkt, valda kategorier, land (om servern eller CDN:et skickar det, t.ex. Cloudflare), samtyckesversion, plugin-version och webbläsarsträng. Ingen IP-adress om inte rutan nedan är ikryssad.' );
+					rcc_field_text( $s, 'consent_log_retention_months', 'Gallring efter (månader)', array( 'type' => 'number', 'class' => 'small-text', 'attrs' => 'min="1" max="120"', 'description' => 'Poster äldre än så raderas automatiskt varje dygn. Standard 12 månader. Sätt inte kortare än samtyckets giltighetstid ovan.' ) );
+					rcc_field_checkbox( $s, 'consent_log_ip_hash', 'IP-adress', 'Spara en saltad hash av besökarens IP-adress', 'Hashen går inte att vända till en IP-adress men ger starkare bevisvärde. Nämn i integritetspolicyn om ni slår på detta.' );
 					?>
 				</table>
 
