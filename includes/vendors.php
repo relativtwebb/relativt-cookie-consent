@@ -25,6 +25,43 @@ function rcc_blocked_script_open( $category, $extra_attrs = '' ) {
 }
 
 /**
+ * Verktygen med eget fält: vilken inställning som håller ID:t och vilken
+ * kategori skriptet blockeras under. Tabellen är den enda platsen där
+ * kategorierna står, så att utskriften nedan och REST-endpointet
+ * /rcc/v1/config (som en headless-frontend gatar efter) aldrig kan
+ * glida isär.
+ */
+function rcc_vendors() {
+	return array(
+		'ga4'        => array( 'setting' => 'ga_measurement_id', 'category' => 'statistics' ),
+		'google_ads' => array( 'setting' => 'google_ads_id', 'category' => 'marketing' ),
+		'gtm'        => array( 'setting' => 'gtm_container_id', 'category' => 'statistics marketing' ),
+		'meta_pixel' => array( 'setting' => 'meta_pixel_id', 'category' => 'marketing' ),
+		'hotjar'     => array( 'setting' => 'hotjar_site_id', 'category' => 'statistics' ),
+		'clarity'    => array( 'setting' => 'clarity_project_id', 'category' => 'statistics' ),
+		'bing_uet'   => array( 'setting' => 'bing_uet_tag_id', 'category' => 'marketing' ),
+		'linkedin'   => array( 'setting' => 'linkedin_partner_id', 'category' => 'marketing' ),
+		'reddit'     => array( 'setting' => 'reddit_pixel_id', 'category' => 'marketing' ),
+		'tiktok'     => array( 'setting' => 'tiktok_pixel_id', 'category' => 'marketing' ),
+		'pinterest'  => array( 'setting' => 'pinterest_tag_id', 'category' => 'marketing' ),
+		'snapchat'   => array( 'setting' => 'snapchat_pixel_id', 'category' => 'marketing' ),
+	);
+}
+
+/**
+ * Kategorin för ett verktyg med sajtens inställningar. GA4 är det enda
+ * som kan flytta: kopplat mot Ads-remarketing eller Google Signals räknas
+ * det som marknadsföring.
+ */
+function rcc_vendor_category( $vendor, $s ) {
+	if ( 'ga4' === $vendor && ! empty( $s['ga_treat_as_marketing'] ) ) {
+		return 'marketing';
+	}
+	$vendors = rcc_vendors();
+	return isset( $vendors[ $vendor ] ) ? $vendors[ $vendor ]['category'] : '';
+}
+
+/**
  * Google Search Console-verifiering: ren ägarskaps-verifiering, sätter
  * inga cookies och läggs därför alltid in oblockerat.
  */
@@ -44,8 +81,8 @@ add_action( 'wp_head', 'rcc_output_gsc_verification', 1 );
  * (sätter inga cookies, bara ett JS-tillstånd) så att alla Google-taggar
  * som laddas senare respekterar valet från start.
  */
-function rcc_output_consent_mode_default() {
-	$defaults = apply_filters( 'rcc_consent_mode_defaults', array(
+function rcc_consent_mode_defaults() {
+	return apply_filters( 'rcc_consent_mode_defaults', array(
 		'ad_storage'              => 'denied',
 		'ad_user_data'            => 'denied',
 		'ad_personalization'      => 'denied',
@@ -55,6 +92,15 @@ function rcc_output_consent_mode_default() {
 		'security_storage'        => 'granted',
 		'wait_for_update'         => 500,
 	) );
+}
+
+/**
+ * Skriver ut defaulten ovan. Separerad från arrayen så att
+ * REST-endpointet /rcc/v1/config kan lämna ut samma värden, inklusive
+ * sajtens anpassning via filtret rcc_consent_mode_defaults.
+ */
+function rcc_output_consent_mode_default() {
+	$defaults = rcc_consent_mode_defaults();
 	?>
 	<script>
 	window.dataLayer = window.dataLayer || [];
@@ -94,7 +140,7 @@ function rcc_gtm_snippet( $container_id ) {
  */
 function rcc_output_google_scripts( $s ) {
 	if ( ! empty( $s['ga_measurement_id'] ) ) {
-		$category = ! empty( $s['ga_treat_as_marketing'] ) ? 'marketing' : 'statistics';
+		$category = rcc_vendor_category( 'ga4', $s );
 		$src      = esc_url( 'https://www.googletagmanager.com/gtag/js?id=' . rawurlencode( $s['ga_measurement_id'] ) );
 		rcc_blocked_script_open( $category, 'data-cookiesrc="' . $src . '" async' );
 		echo '</script>';
@@ -109,10 +155,11 @@ function rcc_output_google_scripts( $s ) {
 	}
 
 	if ( ! empty( $s['google_ads_id'] ) ) {
-		$src = esc_url( 'https://www.googletagmanager.com/gtag/js?id=' . rawurlencode( $s['google_ads_id'] ) );
-		rcc_blocked_script_open( 'marketing', 'data-cookiesrc="' . $src . '" async' );
+		$category = rcc_vendor_category( 'google_ads', $s );
+		$src      = esc_url( 'https://www.googletagmanager.com/gtag/js?id=' . rawurlencode( $s['google_ads_id'] ) );
+		rcc_blocked_script_open( $category, 'data-cookiesrc="' . $src . '" async' );
 		echo '</script>';
-		rcc_blocked_script_open( 'marketing' );
+		rcc_blocked_script_open( $category );
 		?>
 			window.dataLayer = window.dataLayer || [];
 			function gtag(){ dataLayer.push(arguments); }
@@ -131,7 +178,7 @@ function rcc_output_gtm_blocked( $s ) {
 	if ( empty( $s['gtm_container_id'] ) || 'blocked' !== $s['gtm_load_mode'] ) {
 		return;
 	}
-	rcc_blocked_script_open( 'statistics marketing' );
+	rcc_blocked_script_open( rcc_vendor_category( 'gtm', $s ) );
 	rcc_gtm_snippet( $s['gtm_container_id'] );
 	echo '</script>';
 }
@@ -143,7 +190,7 @@ function rcc_output_meta_pixel( $s ) {
 	if ( empty( $s['meta_pixel_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'marketing' );
+	rcc_blocked_script_open( rcc_vendor_category( 'meta_pixel', $s ) );
 	?>
 		!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 		n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
@@ -163,7 +210,7 @@ function rcc_output_hotjar( $s ) {
 	if ( empty( $s['hotjar_site_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'statistics' );
+	rcc_blocked_script_open( rcc_vendor_category( 'hotjar', $s ) );
 	?>
 		(function(h,o,t,j,a,r){
 			h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};
@@ -184,7 +231,7 @@ function rcc_output_clarity( $s ) {
 	if ( empty( $s['clarity_project_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'statistics' );
+	rcc_blocked_script_open( rcc_vendor_category( 'clarity', $s ) );
 	?>
 		(function(c,l,a,r,i,t,y){
 			c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
@@ -202,7 +249,7 @@ function rcc_output_bing_uet( $s ) {
 	if ( empty( $s['bing_uet_tag_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'marketing' );
+	rcc_blocked_script_open( rcc_vendor_category( 'bing_uet', $s ) );
 	?>
 		(function(w,d,t,r,u){
 			var f,n,i;
@@ -221,7 +268,7 @@ function rcc_output_linkedin( $s ) {
 	if ( empty( $s['linkedin_partner_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'marketing' );
+	rcc_blocked_script_open( rcc_vendor_category( 'linkedin', $s ) );
 	?>
 		_linkedin_partner_id = "<?php echo esc_js( $s['linkedin_partner_id'] ); ?>";
 		window._linkedin_data_partner_ids = window._linkedin_data_partner_ids || [];
@@ -245,7 +292,7 @@ function rcc_output_reddit( $s ) {
 	if ( empty( $s['reddit_pixel_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'marketing' );
+	rcc_blocked_script_open( rcc_vendor_category( 'reddit', $s ) );
 	?>
 		!function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];
 		var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js";t.async=!0;
@@ -263,7 +310,7 @@ function rcc_output_tiktok( $s ) {
 	if ( empty( $s['tiktok_pixel_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'marketing' );
+	rcc_blocked_script_open( rcc_vendor_category( 'tiktok', $s ) );
 	?>
 		!function (w, d, t) {
 			w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script");n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
@@ -281,7 +328,7 @@ function rcc_output_pinterest( $s ) {
 	if ( empty( $s['pinterest_tag_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'marketing' );
+	rcc_blocked_script_open( rcc_vendor_category( 'pinterest', $s ) );
 	?>
 		!function(e){if(!window.pintrk){window.pintrk = function () {
 		window.pintrk.queue.push(Array.prototype.slice.call(arguments))};var
@@ -302,7 +349,7 @@ function rcc_output_snapchat( $s ) {
 	if ( empty( $s['snapchat_pixel_id'] ) ) {
 		return;
 	}
-	rcc_blocked_script_open( 'marketing' );
+	rcc_blocked_script_open( rcc_vendor_category( 'snapchat', $s ) );
 	?>
 		(function(e,t,n){if(e.snaptr)return;var a=e.snaptr=function()
 		{a.handleRequest?a.handleRequest.apply(a,arguments):a.queue.push(arguments)};

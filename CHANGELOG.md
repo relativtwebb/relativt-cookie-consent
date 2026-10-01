@@ -8,6 +8,30 @@ Texten under en versionsrubrik används som release-text på GitHub och visas
 under "Visa detaljer" i WP-admin på sajterna som kör pluginet, så skriv för
 den som ska uppdatera.
 
+## [1.2.0] - 2026-10-01
+
+Stöd för headless-sajter: pluginet kan nu vara källa för inställningar
+och samtyckeslogg åt en frontend på en annan domän som ritar sin egen
+cookie-ruta. **Ingenting ändras för sajter som inte använder det nya
+endpointet.** Rutan, cookien, skriptblockeringen, video-gatingen,
+inställningssidan och loggen fungerar exakt som i 1.1.0, och inga besökare
+behöver samtycka om.
+
+- Nytt publikt REST-endpoint `GET /wp-json/rcc/v1/config` med texter,
+  cookienamn och livslängd, samtyckesversion, loggadress,
+  Consent Mode-defaulten, aktiva verktyg med kategori, Search
+  Console-verifiering och utseende. Svaret cachas i fem minuter
+  (`Cache-Control: public, max-age=300`).
+- Egen kod och egen CSS ingår aldrig i svaret.
+- Nytt filter `rcc_rest_config` för att lägga till eller ta bort fält i
+  svaret.
+- README har en ny sektion om headless-upplägg: cookieformat,
+  samtyckesversion, Consent Mode, loggning och ett TypeScript-exempel.
+- Internt: verktygens kategorier och Consent Mode-defaulten ligger nu på
+  ett ställe (`rcc_vendors()`, `rcc_vendor_category()`,
+  `rcc_consent_mode_defaults()`), så att sidan och endpointet alltid
+  stämmer överens. Utskriften i `<head>` är oförändrad.
+
 ## [1.1.0] - 2026-09-10
 
 Samtyckeslogg och samtyckesversion. Uppdateringen skapar tabellen

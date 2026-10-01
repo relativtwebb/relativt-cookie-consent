@@ -4,7 +4,7 @@ Tags: cookies, consent, gdpr, google analytics, google tag manager, meta pixel
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -50,6 +50,11 @@ Redan laddade skript kan inte "avladdas", men inga nya anrop görs. Under Allmä
 Lägg `define( 'RCC_GITHUB_TOKEN', 'github_pat_...' );` i wp-config.php. En fine-grained token med läsrättighet till Contents räcker.
 
 == Changelog ==
+
+= 1.2.0 =
+* Nytt REST-endpoint GET /wp-json/rcc/v1/config så att en headless-frontend kan rita en egen ruta och logga till samma samtyckeslogg.
+* Nytt filter rcc_rest_config.
+* Ingen ändring för sajter som inte använder endpointet.
 
 = 1.1.0 =
 * Samtyckeslogg med sökning, filter, CSV-export och automatisk gallring.
