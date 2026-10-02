@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       Relativt Cookie Consent
  * Plugin URI:        https://github.com/relativtwebb/relativt-cookie-consent
- * Description:       Lättviktig GDPR-anpassad cookie-ruta med samtyckeslogg. Blockerar Google Analytics, Google Ads, Google Tag Manager, Meta-pixeln, TikTok, Pinterest, Snapchat, LinkedIn, Reddit, Hotjar, Microsoft Clarity, Bing UET, egen kod samt YouTube-/Vimeo-inbäddningar tills besökaren samtyckt.
- * Version:           1.2.0
+ * Description:       Lättviktig GDPR-anpassad cookie-ruta med samtyckeslogg, statistik, cookiedeklaration och skriptskanner. Blockerar Google Analytics, Google Ads, Google Tag Manager, Meta-pixeln, TikTok, Pinterest, Snapchat, LinkedIn, Reddit, Hotjar, Microsoft Clarity, Bing UET, egen kod, valfria domäner samt YouTube-/Vimeo-inbäddningar tills besökaren samtyckt.
+ * Version:           1.3.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Relativt
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Direkt åtkomst inte tillåten.
 }
 
-define( 'RCC_VERSION', '1.2.0' );
+define( 'RCC_VERSION', '1.3.0' );
 define( 'RCC_PLUGIN_FILE', __FILE__ );
 define( 'RCC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RCC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -34,11 +34,19 @@ if ( ! defined( 'RCC_GITHUB_REPO' ) ) {
 }
 
 require_once RCC_PLUGIN_DIR . 'includes/settings.php';
+require_once RCC_PLUGIN_DIR . 'includes/known-domains.php';
 require_once RCC_PLUGIN_DIR . 'includes/vendors.php';
 require_once RCC_PLUGIN_DIR . 'includes/frontend.php';
+require_once RCC_PLUGIN_DIR . 'includes/script-blocking.php';
+require_once RCC_PLUGIN_DIR . 'includes/cookie-declaration.php';
 require_once RCC_PLUGIN_DIR . 'includes/consent-log.php';
+require_once RCC_PLUGIN_DIR . 'includes/stats.php';
+require_once RCC_PLUGIN_DIR . 'includes/scanner.php';
 require_once RCC_PLUGIN_DIR . 'includes/rest-config.php';
+require_once RCC_PLUGIN_DIR . 'includes/admin-menu.php';
 require_once RCC_PLUGIN_DIR . 'includes/admin-consent-log.php';
+require_once RCC_PLUGIN_DIR . 'includes/admin-stats.php';
+require_once RCC_PLUGIN_DIR . 'includes/admin-scanner.php';
 require_once RCC_PLUGIN_DIR . 'includes/class-rcc-github-updater.php';
 
 /**
@@ -67,7 +75,7 @@ register_deactivation_hook( __FILE__, 'rcc_deactivate' );
  * Snabblänk till inställningarna i plugin-listan.
  */
 function rcc_plugin_action_links( $links ) {
-	$url  = admin_url( 'options-general.php?page=relativt-cookie-consent' );
+	$url  = rcc_admin_page_url();
 	$link = '<a href="' . esc_url( $url ) . '">Inställningar</a>';
 	array_unshift( $links, $link );
 	return $links;

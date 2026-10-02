@@ -8,6 +8,56 @@ Texten under en versionsrubrik används som release-text på GitHub och visas
 under "Visa detaljer" i WP-admin på sajterna som kör pluginet, så skriv för
 den som ska uppdatera.
 
+## [1.3.0] - 2026-10-02
+
+Egen meny i WP-admin, statistik, cookiedeklaration, skriptskanner och
+blockering av valfria domäner, plus en viktig rättelse av "Egen kod".
+Uppdateringen skapar tabellen `{prefix}rcc_banner_views` automatiskt.
+Inga besökare behöver samtycka om. Cookien, rutan och de inbyggda
+verktygen fungerar som i 1.2.0.
+
+**Rättat (viktigt för sajter med Egen kod):** innehöll "Egen kod" mer än
+en `<script>`-tagg kördes allt efter den första `</script>` utan samtycke,
+liksom en `<img>`-pixel efter ett skript. Felet fanns sedan 1.0.0. Koden
+läggs nu som JSON i `<script type="application/json" data-rcc-html-block>`
+och körs först vid samtycke, i tur och ordning: ett externt skript laddar
+klart innan nästa körs. `<noscript>`-delen i klistrade snippets hoppas
+över, så att besöket inte räknas två gånger. Har en sajt egen kod med
+flera skript: kontrollera i statistikverktygen att inga besök registrerats
+utan samtycke, och höj gärna samtyckesversionen.
+
+- **Egen meny** "Cookie Consent" med Inställningar, Statistik,
+  Samtyckeslogg och Skanner. Gamla adresser under Inställningar skickas
+  vidare, så bokmärken fungerar.
+- **Statistik:** fördelning av val (accepterat/delvis/avvisat), val per
+  dag, unika samtyckes-ID, visningar av rutan och svarsfrekvens för 7, 30
+  eller 90 dagar, plus en widget på panelen. Visningarna räknas per dag
+  utan uppgifter om besökaren (`POST /wp-json/rcc/v1/view`) och kan
+  stängas av under Allmänt.
+- **Cookiedeklaration:** kortkoden `[relativt_cookie_declaration]` visar
+  sajtens cookies per kategori, byggt av aktiva verktyg, YouTube/Vimeo och
+  egna rader under den nya fliken Cookiedeklaration. Ingår också i
+  `/rcc/v1/config` som `cookie_declaration`.
+- **Blockera domäner** (fliken Blockering, tidigare "Video & egen kod"):
+  skript, inline-skript och iframes från listade domäner blockeras även
+  när andra plugin eller temat skriver ut dem. En sökväg gör det smalare,
+  t.ex. `www.google.com/maps` utan att röra reCAPTCHA.
+- **Skanner:** hämtar sajtens sidor och listar skript och inbäddningar
+  från andra domäner, om de blockeras, och föreslår kategori. En knapp
+  lägger till domänen i blocklistan. Flaggar kvarglömda cookie-lösningar
+  (CookieYes, Cookiebot, OneTrust).
+- Blockerade iframes med flera kategorier, och iframes som redan hade en
+  `class`, aktiveras nu korrekt.
+- Egen kod raderas inte längre när en administratör utan behörigheten
+  `unfiltered_html` sparar andra inställningar.
+- "Inställningarna sparade" visas efter att man sparat.
+- Nya filter: `rcc_blocked_domains`, `rcc_known_domains`,
+  `rcc_filter_output_on_request`, `rcc_vendor_cookies`,
+  `rcc_cookie_declaration`, `rcc_count_banner_views`,
+  `rcc_dashboard_widget`, `rcc_scanner_urls`.
+- Internt: Consent Mode-defaulten och GTM i läget "alltid" märks med
+  `data-rcc-core` så att domänblockeringen aldrig rör dem.
+
 ## [1.2.0] - 2026-10-01
 
 Stöd för headless-sajter: pluginet kan nu vara källa för inställningar

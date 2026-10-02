@@ -9,10 +9,13 @@ Byggt av [Relativt](https://relativt.se) för våra kundsajter. Fritt att använ
 - Visar en cookie-ruta med tre kategorier: **Nödvändiga**, **Statistik** och **Marknadsföring**. Besökaren kan acceptera alla, bara nödvändiga eller välja per kategori.
 - Skriver ut spårningsskript som `<script type="text/plain" data-cookiecategory="...">`. De körs inte förrän besökaren samtyckt till rätt kategori, och de finns kvar i sidan så att ingen omladdning behövs.
 - Har färdiga fält för Google Analytics 4, Google Ads, Google Tag Manager, Google Search Console-verifiering, Meta Pixel, Hotjar, Microsoft Clarity, Microsoft/Bing UET, LinkedIn Insight Tag, Reddit, TikTok, Pinterest och Snapchat. Andra verktyg klistras in under "Egen kod" per kategori.
+- Blockerar skript och inbäddningar från valfria domäner, även när de skrivs ut av andra plugin eller temat. En skanner visar vad som laddas utan att blockeras och lägger till domänen med ett klick (se [Skanner och domänblockering](#skanner-och-domänblockering)).
+- Bygger en cookiedeklaration av de verktyg som är på, plus egna rader, och visar den med kortkoden `[relativt_cookie_declaration]`.
 - Skickar Google Consent Mode v2-signaler (`denied` som utgångsläge, `update` vid val) och ett dataLayer-event för GTM-triggers.
 - Blockerar YouTube- och Vimeo-iframes sajtbrett, även i sidbyggare som Oxygen, Elementor och Bricks, genom att skriva om sidans HTML innan den skickas till besökaren. En "Visa innehåll"-knapp ersätter videon tills rätt samtycke finns.
 - Låter varje sajt styra utseendet (layout, färger, radie, typsnitt, egen CSS) och alla texter från WP-admin.
-- Loggar varje samtycke i en egen tabell (samtyckes-ID, tidpunkt, kategorier, land, version) som bevis enligt GDPR art. 7.1, med sökning, filter och CSV-export under Inställningar → Samtyckeslogg. Poster gallras automatiskt.
+- Loggar varje samtycke i en egen tabell (samtyckes-ID, tidpunkt, kategorier, land, version) som bevis enligt GDPR art. 7.1, med sökning, filter och CSV-export under Cookie Consent → Samtyckeslogg. Poster gallras automatiskt.
+- Visar statistik över valen och hur ofta rutan visas, på en egen sida och som widget på panelen.
 - Har en samtyckesversion: höj siffran när ni lägger till verktyg eller ändrar texter, så får alla besökare rutan på nytt.
 - Kan vara källa för inställningar och logg åt en headless-frontend på en annan domän via `GET /wp-json/rcc/v1/config` (se [Headless](#headless-egen-ruta-på-en-annan-domän)).
 - Hämtar nya versioner från det här repots GitHub Releases och visar dem under Uppdateringar i WP-admin.
@@ -29,19 +32,21 @@ Tre layouter, alla med färger och radie från Utseende-fliken. Typsnittet ärvs
 
 1. Ladda ner `relativt-cookie-consent.zip` från senaste [releasen](../../releases/latest).
 2. I WP-admin: Tillägg → Lägg till nytt → Ladda upp tillägg. Aktivera.
-3. Gå till Inställningar → Cookie Consent och fyll i:
+3. Gå till **Cookie Consent** i vänstermenyn (låg under Inställningar före 1.3.0) och fyll i:
    - **Verktyg**: ID:n för de verktyg sajten faktiskt använder. Tomma fält skrivs aldrig ut.
-   - **Video & egen kod**: om video ska blockeras och vilken kategori YouTube/Vimeo tillhör, plus egen kod för verktyg utan eget fält.
+   - **Blockering**: om video ska blockeras och vilken kategori YouTube/Vimeo tillhör, domäner att blockera och egen kod för verktyg utan eget fält.
+   - **Cookiedeklaration**: egna cookies som inte kommer från verktygsfälten, och en förhandsvisning av listan.
    - **Texter**: rubrik, ingress, kategoribeskrivningar och knapptexter. Här byter du språk på hela rutan om sajten är på engelska.
    - **Utseende**: layout, färger och typsnitt så rutan passar sajtens profil.
    - **Allmänt**: länk till integritetspolicyn, hur länge samtycket sparas, flytande knapp.
-4. Kontrollera sajten i ett inkognitofönster: inga anrop till Google, Meta osv. ska göras innan du klickat i rutan. Verktyget "Nätverk" i webbläsarens utvecklarverktyg visar det tydligt.
+4. Kör **Cookie Consent → Skanner**. Blockera det som laddas utan samtycke, eller ta bort det från sajten.
+5. Kontrollera sajten i ett inkognitofönster: inga anrop till Google, Meta osv. ska göras innan du klickat i rutan. Verktyget "Nätverk" i webbläsarens utvecklarverktyg visar det tydligt.
 
 Installera från release-zippen, inte från "Download ZIP" på repots startsida. Den senare packar upp till en mapp med fel namn, vilket ställer till det för uppdateringarna.
 
 ### Byta från en annan cookie-lösning
 
-Avaktivera den gamla lösningen i samma veva som den här aktiveras, så att besökarna inte får två rutor. Samtyckescookien heter `relativt_cookie_consent`, så besökare som samtyckt i det gamla verktyget får frågan en gång till. Behöver en sajt behålla ett tidigare cookienamn går det via filtret:
+Avaktivera den gamla lösningen i samma veva som den här aktiveras, så att besökarna inte får två rutor. Skannern flaggar CookieYes, Cookiebot, OneTrust och HubSpots cookie-banner om de ligger kvar. Samtyckescookien heter `relativt_cookie_consent`, så besökare som samtyckt i det gamla verktyget får frågan en gång till. Behöver en sajt behålla ett tidigare cookienamn går det via filtret:
 
 ```php
 add_filter( 'rcc_cookie_name', fn() => 'gammalt_cookienamn' );
@@ -60,6 +65,7 @@ add_filter( 'rcc_cookie_name', fn() => 'gammalt_cookienamn' );
 | Microsoft/Bing UET, LinkedIn, Reddit, TikTok, Pinterest, Snapchat | Marknadsföring | |
 | YouTube, Vimeo | Valbart, standard Marknadsföring | |
 | Egen kod | Valbart per fält | Kräver behörigheten `unfiltered_html` för att spara `<script>`-taggar. |
+| Blockerade domäner | Valbart per lista | Skript och iframes från domänen, även från andra plugin och temat. |
 
 ## Google Tag Manager
 
@@ -73,9 +79,59 @@ Två lägen under Verktyg:
 
 Varje val besökaren gör skickas till `POST /wp-json/rcc/v1/consent` och sparas i tabellen `{prefix}rcc_consent_log`. Raden innehåller ett slumpat samtyckes-ID (ligger i cookien och visas för besökaren under kategorierna i cookie-inställningarna), tidpunkt (UTC), status (accepterat/avvisat/delvis), valda kategorier, land, samtyckesversion, plugin-version och webbläsarsträng. IP-adress sparas bara som saltad hash och bara om inställningen är påslagen.
 
-Vid en förfrågan från en besökare: be om samtyckes-ID:t, sök på det under Inställningar → Samtyckeslogg, och exportera vid behov som CSV. Poster äldre än inställd gallringstid (standard 12 månader) raderas av ett dagligt cron-jobb; "Gallra nu" kör samma sak direkt.
+Vid en förfrågan från en besökare: be om samtyckes-ID:t, sök på det under Cookie Consent → Samtyckeslogg, och exportera vid behov som CSV. Poster äldre än inställd gallringstid (standard 12 månader) raderas av ett dagligt cron-jobb; "Gallra nu" kör samma sak direkt.
 
 **Samtyckesversion** (Allmänt-fliken) är ett heltal som sparas i cookien. Höj det med ett när sajten får ett nytt verktyg eller när texterna i rutan ändras – besökare med äldre version får rutan igen, och tidigare samtycken slutar gälla tills de tagit ställning på nytt. ID:t behålls så att loggen visar hela historiken. Cookies från version 1.0.0 saknar versionsnummer och räknas som version 1.
+
+## Statistik
+
+Cookie Consent → Statistik visar de senaste 7, 30 eller 90 dagarna:
+
+- **Val** fördelade på accepterat, delvis och avvisat (munkdiagram och staplar per dag), plus antal unika samtyckes-ID. Siffrorna kommer från samtyckesloggen, så varje val räknas, även när samma besökare ändrar sig.
+- **Visningar av rutan** per dag och **svarsfrekvens** (val delat med visningar). En visning räknas varje gång rutan visas automatiskt för en besökare utan giltigt val. Räknaren är en siffra per dag i tabellen `{prefix}rcc_banner_views`, utan cookie, IP eller annan uppgift om besökaren. Svarsfrekvensen blir därför ett golv.
+- Alla siffror finns också som tabell under diagrammen. Samma sammanfattning för 30 dagar visas som widget på WP-panelen (stängs av med filtret `rcc_dashboard_widget`).
+
+Räkningen av visningar kan stängas av under Allmänt. Den kräver att loggen är på. Visningsdagarna gallras efter samma tid som loggen. Både val och visningar rapporteras av besökarens webbläsare utan inloggning, så se siffrorna som en trend snarare än exakta tal.
+
+## Cookiedeklaration
+
+Kortkoden `[relativt_cookie_declaration]` visar en tabell per kategori med cookiens namn, leverantör, syfte och lagringstid. Listan byggs av:
+
+1. Pluginets egen cookie (Nödvändiga).
+2. Kända cookies för varje verktyg som har ett ID ifyllt, med ID:t insatt där cookienamnet innehåller det (`_ga_ABC123`, `_hjSession_123456`). GA4 hamnar under Marknadsföring om "Behandla som marknadsföring" är ikryssat.
+3. YouTube och Vimeo när videoblockeringen är på.
+4. **Egna cookies** under fliken Cookiedeklaration, en per rad: `namn | leverantör | kategori | syfte | lagringstid`. Kategori skrivs som nödvändiga, statistik eller marknadsföring.
+
+Kortkoden tar `category` (en eller flera, kommaseparerade), `descriptions="nej"` för att dölja kategoribeskrivningarna och `heading` (`h2`–`h5` eller `strong`). Fliken visar en förhandsvisning och påminner om källor pluginet inte känner till (GTM-taggar, egen kod, blockerade domäner).
+
+Verktygens cookies ändras ibland. Listan i `includes/cookie-declaration.php` tar upp de vanliga, men stäm av mot webbläsarens utvecklarverktyg (Application → Cookies) innan lansering. Filtren `rcc_vendor_cookies` och `rcc_cookie_declaration` ändrar listan i kod.
+
+## Skanner och domänblockering
+
+Verktygsfälten och egen kod täcker det pluginet själv skriver ut. Spårning som andra plugin, temat eller sidbyggaren lägger in körs annars utan samtycke. Två funktioner hanterar det:
+
+**Skannern** (Cookie Consent → Skanner) hämtar startsidan, de senast ändrade sidorna, de senaste inläggen och ett exempel per övrig inläggstyp, högst 15 sidor plus egna adresser. Sidorna hämtas som en anonym besökare från servern. Resultatet listas per domän med typ (skript, inline-skript, inbäddning), sidor och status:
+
+| Status | Betyder |
+| --- | --- |
+| Blockeras inte | Laddas utan samtycke. Lägg till domänen med knappen; den föreslagna kategorin är markerad. |
+| Annan cookie-lösning | CookieYes, Cookiebot, OneTrust eller HubSpots banner ligger kvar. Ta bort den. |
+| Blockeras | Pluginet håller tillbaka det tills samtycke. |
+| Nödvändig | T.ex. reCAPTCHA, Cloudflare Turnstile, Stripe. Blockera inte, då slutar formulär och betalning fungera. |
+| Sätter normalt inga cookies | CDN:er och cookiefri statistik (Plausible, Cloudflare Web Analytics). |
+
+Skannern ser bara HTML:en som skickas till besökaren. Skript som laddas av annan JavaScript efteråt, till exempel taggar i GTM, syns inte. Den hämtar bara adresser på sajtens egen domän och port och följer bara omdirigeringar inom sajten. En lösenordsskyddad staging-sajt ger fel 401.
+
+**Blockera domäner** (fliken Blockering) har en lista per kategori, en domän per rad. Subdomäner ingår, och en sökväg gör blockeringen smalare: `www.google.com/maps` blockerar Google Maps-inbäddningar men inte reCAPTCHA på samma domän. Står en domän i båda listorna räcker samtycke till endera. Pluginet skriver om sidans HTML innan den skickas:
+
+- `<script src>` från domänen blir `<script type="text/plain" data-cookiecategory="…" data-cookiesrc="…">`. Ett ursprungligt `type` (t.ex. `module`) sparas i `data-rcc-type` och återställs vid aktivering.
+- Inline-skript blockeras om domänen står i koden, eller om koden bär signaturen för ett känt verktyg vars domän är blockerad (t.ex. `fbq(` för Meta när `connect.facebook.net` är blockerad). Då körs `fbq('init', …)` efter att pixeln laddats, inte före.
+- Iframes får `data-cookiesrc` och samma "Visa innehåll"-knapp som video.
+- Aldrig: sajtens egen domän, pluginets egna skript, JSON-LD och andra icke-JS-typer, och WordPress dataobjekt (`id="…-js-extra"`).
+
+När samtycke ges körs de blockerade skripten i sidans ordning. Ett externt skript utan `async` laddar klart innan nästa körs, precis som när webbläsaren läser sidan.
+
+Lägger ni till en domän på en sajt som redan är i drift har besökarna samtyckt utan att den fanns med. Höj samtyckesversionen så att alla tar ställning på nytt.
 
 ## Länkar till cookie-inställningarna
 
@@ -91,8 +147,9 @@ I ett headless-upplägg ligger frontend på en annan domän än WordPress. Cooki
 
 | Endpoint | Användning |
 | --- | --- |
-| `GET /wp-json/rcc/v1/config` | Texter, cookieformat, samtyckesversion, Consent Mode-defaulten, aktiva verktyg med kategori, utseende. Publikt, `Cache-Control: public, max-age=300`. |
+| `GET /wp-json/rcc/v1/config` | Texter, cookieformat, samtyckesversion, Consent Mode-defaulten, aktiva verktyg med kategori, cookiedeklaration, utseende. Publikt, `Cache-Control: public, max-age=300`. |
 | `POST /wp-json/rcc/v1/consent` | Samma logg som den inbyggda rutan använder. |
+| `POST /wp-json/rcc/v1/view` | Valfri: räknar en visning av rutan till statistiken. Ingen kropp. |
 
 Båda fungerar cross-origin utan extra kod: WordPress speglar `Origin` på `/wp-json/` och svarar på preflight för `Content-Type`.
 
@@ -104,10 +161,11 @@ curl -s https://example.com/wp-json/rcc/v1/config
 
 ```json
 {
-  "plugin_version": "1.2.0",
+  "plugin_version": "1.3.0",
   "cookie": { "name": "relativt_cookie_consent", "expiry_days": 180 },
   "consent_version": 1,
   "log_endpoint": "https://example.com/wp-json/rcc/v1/consent",
+  "view_endpoint": "https://example.com/wp-json/rcc/v1/view",
   "consent_mode_defaults": {
     "ad_storage": "denied", "ad_user_data": "denied", "ad_personalization": "denied",
     "analytics_storage": "denied", "functionality_storage": "granted",
@@ -127,6 +185,17 @@ curl -s https://example.com/wp-json/rcc/v1/config
     "gtm": { "id": "GTM-XXXXXXX", "mode": "blocked", "category": "statistics marketing" }
   },
   "gsc_verification": "…",
+  "cookie_declaration": {
+    "necessary": [
+      { "category": "necessary", "name": "relativt_cookie_consent", "provider": "example.com",
+        "purpose": "Sparar dina cookie-val och ditt samtyckes-ID.", "duration": "6 månader", "source": "plugin" }
+    ],
+    "statistics": [
+      { "category": "statistics", "name": "_ga", "provider": "Google",
+        "purpose": "Skiljer besökare åt i statistiken.", "duration": "2 år", "source": "ga4" }
+    ],
+    "marketing": []
+  },
   "appearance": {
     "layout": "bar", "show_backdrop": false,
     "color_bg": "#ffffff", "color_text": "#1a1a1a", "color_accent": "#1a1a1a",
@@ -139,7 +208,8 @@ curl -s https://example.com/wp-json/rcc/v1/config
 
 - Standardvärdena ingår, så svaret är komplett även om ingen sparat inställningarna.
 - `vendors` innehåller bara verktyg med ifyllt ID, och är `{}` när inget är ifyllt. Möjliga nycklar: `ga4`, `google_ads`, `gtm`, `meta_pixel`, `hotjar`, `clarity`, `bing_uet`, `linkedin`, `reddit`, `tiktok`, `pinterest`, `snapchat`. Kategorin är exakt den som pluginet själv blockerar verktyget under (GA4 blir `marketing` när "Behandla som marknadsföring" är ikryssat). `"statistics marketing"` betyder att endera kategorin räcker. GTM har även `mode`: `blocked` = vänta på samtycke, `always` = ladda direkt och låt Consent Mode styra taggarna (se avsnittet om GTM ovan).
-- `log_endpoint` är tom sträng när loggen är avstängd. Skicka då ingenting.
+- `log_endpoint` är tom sträng när loggen är avstängd. Skicka då ingenting. Samma sak för `view_endpoint` när räkningen av visningar är avstängd.
+- `cookie_declaration` är samma lista som kortkoden visar (se [Cookiedeklaration](#cookiedeklaration)), för en policysida i frontend. `source` är `plugin`, verktygsnyckeln eller `custom`.
 - `consent_mode_defaults` går genom filtret `rcc_consent_mode_defaults`, så sajtens anpassning följer med.
 - Texterna är ren text. Rendera dem som text, inte som HTML.
 - Svaret påverkas inte av `?lang` eller liknande: pluginet har ett språk per sajt.
@@ -170,11 +240,12 @@ add_filter( 'rcc_rest_config', function ( $config, $settings ) {
    Pusha också `{ event: 'rcc_consent_update', rcc_statistics, rcc_marketing }` till `dataLayer`, så att GTM-triggers fungerar som på en vanlig sajt.
 5. **Verktygen** laddas först när rätt kategori är godkänd, utifrån `vendors`. GA4 laddas som pluginet gör det: `https://www.googletagmanager.com/gtag/js?id=<id>` (async), följt av `gtag('js', new Date())` och `gtag('config', '<id>', { anonymize_ip: true })`. Frontend behöver inte stödja alla verktyg; de som inte implementeras ignoreras.
 6. **Google Search Console.** `gsc_verification` är ren ägarverifiering utan cookies och läggs alltid in som `<meta name="google-site-verification" content="…">` i `<head>`, oavsett samtycke.
-7. **Logga valet.** Skicka `POST log_endpoint` med `{ id, statistics, marketing, version }` vid varje val, med `credentials: 'omit'` och `keepalive: true`. Anropet får aldrig blockera rutan, och ett fel ska sväljas. Loggen sparar land från CDN-headers och, om det är påslaget, en saltad hash av IP-adressen som anropar. När besökarens webbläsare anropar direkt är det besökarens IP. Går anropet via en server-proxy blir både land och hash proxyns, och loggen tappar sitt bevisvärde. Avråd från proxy.
-8. **Visa samtyckes-ID och tidpunkt** i inställningsläget, med etiketten `consent_id_label` (tom etikett = visa inte). Då kan besökaren uppge ID:t vid en förfrågan, precis som i pluginets ruta.
-9. **Öppna rutan igen.** Frontend ansvarar själv för en länk i footern och på policysidan som öppnar inställningarna. Kortkoden och `data-rcc-open` gäller bara sidor som WordPress renderar.
-10. **Ändrade texter eller nya verktyg:** höj `consent_version` i WP-admin. Rutan visas då på nytt hos alla besökare, och frontend behöver bara läsa om konfigurationen.
-11. **Gäller inte headless:** video-gating, aktivering av `<script type="text/plain">`, egen kod och den flytande knappen. Utseende-inställningarna följer med i `appearance` för den som vill använda dem, men är frivilliga. Notera att pluginets egen ruta alltid har mörkad bakgrund i layouten `center`.
+7. **Räkna visningen (valfritt).** Skicka `POST view_endpoint` utan kropp när rutan visas för en besökare utan giltigt samtycke, med `credentials: 'omit'` och `keepalive: true`. Då får Statistik-sidan svarsfrekvensen även för headless-sajten.
+8. **Logga valet.** Skicka `POST log_endpoint` med `{ id, statistics, marketing, version }` vid varje val, med `credentials: 'omit'` och `keepalive: true`. Anropet får aldrig blockera rutan, och ett fel ska sväljas. Loggen sparar land från CDN-headers och, om det är påslaget, en saltad hash av IP-adressen som anropar. När besökarens webbläsare anropar direkt är det besökarens IP. Går anropet via en server-proxy blir både land och hash proxyns, och loggen tappar sitt bevisvärde. Avråd från proxy.
+9. **Visa samtyckes-ID och tidpunkt** i inställningsläget, med etiketten `consent_id_label` (tom etikett = visa inte). Då kan besökaren uppge ID:t vid en förfrågan, precis som i pluginets ruta.
+10. **Öppna rutan igen.** Frontend ansvarar själv för en länk i footern och på policysidan som öppnar inställningarna. Kortkoden och `data-rcc-open` gäller bara sidor som WordPress renderar.
+11. **Ändrade texter eller nya verktyg:** höj `consent_version` i WP-admin. Rutan visas då på nytt hos alla besökare, och frontend behöver bara läsa om konfigurationen.
+12. **Gäller inte headless:** video-gating, domänblockering och skannern, aktivering av `<script type="text/plain">`, egen kod och den flytande knappen. Utseende-inställningarna följer med i `appearance` för den som vill använda dem, men är frivilliga. Notera att pluginets egen ruta alltid har mörkad bakgrund i layouten `center`.
 
 ### Exempel i TypeScript
 
@@ -196,6 +267,7 @@ export interface RccConfig {
   cookie: { name: string; expiry_days: number };
   consent_version: number;
   log_endpoint: string; // '' = loggen är avstängd
+  view_endpoint: string; // '' = visningar räknas inte
   consent_mode_defaults: Record<string, 'granted' | 'denied' | number>;
   texts: Record<TextKey, string>;
   vendors: Partial<Record<VendorKey, {
@@ -204,6 +276,11 @@ export interface RccConfig {
     mode?: 'blocked' | 'always'; // bara gtm
   }>>;
   gsc_verification: string;
+  cookie_declaration: Record<'necessary' | Category, Array<{
+    category: 'necessary' | Category;
+    name: string; provider: string; purpose: string; duration: string;
+    source: string; // 'plugin', verktygsnyckel eller 'custom'
+  }>>;
   appearance: {
     layout: 'bar' | 'card-left' | 'card-right' | 'center';
     show_backdrop: boolean;
@@ -363,7 +440,7 @@ add_action( 'rcc_gated_scripts', function ( $settings ) {
 } );
 ```
 
-Block som blandar `<script>` och andra taggar (t.ex. `<img>`) markeras med `data-html-block="1"` och innehåller rå HTML.
+Block som blandar `<script>` och andra taggar (t.ex. `<img>`) skrivs ut med `rcc_output_html_block( 'marketing', $html )`. Blocket läggs som JSON i `<script type="application/json" data-rcc-html-block>`, så att en `</script>` i koden inte kan stänga omslaget. Vid samtycke körs skripten i tur och ordning; `<noscript>` hoppas över. Det äldre formatet, rå HTML i `<script type="text/plain" data-html-block="1">`, fungerar fortfarande men är inte säkert för kod med flera `<script>`-taggar.
 
 ### JavaScript-API
 
@@ -390,8 +467,16 @@ document.addEventListener( 'rcc_consent_updated', function ( e ) {
 | `rcc_settings` | filter | Åsidosätt sparade värden i kod (t.ex. tomt GA-ID på staging). |
 | `rcc_cookie_name` | filter | Namnet på samtyckescookien. |
 | `rcc_consent_mode_defaults` | filter | Utgångsläget för Consent Mode v2. |
-| `rcc_gated_iframe_hosts` | filter | Fler värdar att blockera, t.ex. `'google.com' => 'marketing'` för Google Maps. |
+| `rcc_gated_iframe_hosts` | filter | Fler värdar vars iframes blockeras, t.ex. `'google.com/maps' => 'marketing'`. |
+| `rcc_blocked_domains` | filter | Domäner (skript och iframes) att blockera utöver listorna i admin: `$domains['example.com'] = 'marketing'`. |
+| `rcc_known_domains` | filter | Skannerns kända domäner med namn, föreslagen kategori och signaturer för inline-skript. |
 | `rcc_gate_video_on_request` | filter | Returnera false för att hoppa över video-gatingen på en viss förfrågan. |
+| `rcc_filter_output_on_request` | filter | Returnera false för att hoppa över all bearbetning av HTML:en (video och domäner) på en viss förfrågan. |
+| `rcc_vendor_cookies` | filter | Kända cookies per verktyg i cookiedeklarationen. |
+| `rcc_cookie_declaration` | filter | Hela cookiedeklarationen (args: `$declaration`, `$settings`). |
+| `rcc_count_banner_views` | filter | Returnera false för att sluta räkna visningar av rutan. |
+| `rcc_dashboard_widget` | filter | Returnera false för att dölja statistikwidgeten på panelen. |
+| `rcc_scanner_urls` | filter | Sidorna skannern hämtar (högst 15). |
 | `rcc_inline_css` | filter | CSS-variablerna och den egna CSS:en som skrivs ut. |
 | `rcc_script_config` | filter | Konfigurationen som skickas till JS (`rccSettings`). |
 | `rcc_rest_config` | filter | Svaret från `GET /wp-json/rcc/v1/config` (args: `$config`, `$settings`). |
@@ -407,7 +492,7 @@ document.addEventListener( 'rcc_consent_updated', function ( e ) {
 
 ### CSS
 
-Alla klasser har prefixet `.rcc-`: `.rcc-banner`, `.rcc-banner--bar|card-left|card-right|center`, `.rcc-banner__heading`, `.rcc-category`, `.rcc-switch`, `.rcc-btn--primary|outline|text`, `.rcc-reopen`, `.rcc-inline-link`, `.rcc-iframe-overlay`. Färgerna från Utseende-fliken finns som CSS-variabler på `:root`: `--rcc-bg`, `--rcc-text`, `--rcc-accent`, `--rcc-btn-bg`, `--rcc-btn-text`, `--rcc-radius`, `--rcc-font`.
+Alla klasser har prefixet `.rcc-`: `.rcc-banner`, `.rcc-banner--bar|card-left|card-right|center`, `.rcc-banner__heading`, `.rcc-category`, `.rcc-switch`, `.rcc-btn--primary|outline|text`, `.rcc-reopen`, `.rcc-inline-link`, `.rcc-iframe-overlay`. Cookiedeklarationen: `.rcc-declaration`, `.rcc-declaration__category--necessary|statistics|marketing`, `.rcc-declaration__heading`, `.rcc-declaration__table`. Färgerna från Utseende-fliken finns som CSS-variabler på `:root`: `--rcc-bg`, `--rcc-text`, `--rcc-accent`, `--rcc-btn-bg`, `--rcc-btn-text`, `--rcc-radius`, `--rcc-font`.
 
 ## Uppdateringar via GitHub
 
@@ -426,13 +511,13 @@ En fine-grained personal access token med läsrättighet till Contents för just
 ## Släppa en ny version
 
 1. Höj versionsnumret på tre ställen: `Version:` i plugin-huvudet, `RCC_VERSION` och `Stable tag:` i `readme.txt`. Lint-workflowet stoppar om de skiljer sig.
-2. Skriv en sektion `## [1.2.0] - ÅÅÅÅ-MM-DD` i `CHANGELOG.md`. Texten blir release-text på GitHub och changelog i WP-admin.
+2. Skriv en sektion `## [1.3.0] - ÅÅÅÅ-MM-DD` i `CHANGELOG.md`. Texten blir release-text på GitHub och changelog i WP-admin.
 3. Committa, tagga och pusha:
 
    ```bash
-   git commit -am "Version 1.2.0"
-   git tag v1.2.0
-   git push && git push origin v1.2.0
+   git commit -am "Version 1.3.0"
+   git tag v1.3.0
+   git push && git push origin v1.3.0
    ```
 
 4. GitHub Actions bygger `relativt-cookie-consent.zip` (utan `.github`, README och liknande) och skapar releasen med zippen som bilaga. Kundsajterna ser uppdateringen inom sex timmar, eller direkt via "Sök efter uppdatering".
@@ -441,9 +526,10 @@ Workflowet vägrar bygga om taggen inte matchar versionen i pluginet.
 
 ## Att stämma av innan lansering
 
-- **Integritetspolicyn** ska lista de verktyg som faktiskt körs, med kategori och lagringstid. Pluginet skriver inte om policyn.
+- **Integritetspolicyn** ska lista de verktyg som faktiskt körs, med kategori och lagringstid. Pluginet skriver inte om policyn, men `[relativt_cookie_declaration]` ger tabellen över cookies.
+- **Skannern**: kör den och åtgärda allt som står som "Blockeras inte" eller "Annan cookie-lösning".
 - **GA4-kategorin**: kopplat mot Google Ads eller Google Signals räknas som marknadsföring.
-- **Video-gatingen** är ett bästa-möjliga-skydd. Testa på en sida med inbäddad video. Lazy-laddade iframes som använder `data-src` i stället för `src` fångas inte.
+- **Video-gatingen och domänblockeringen** är ett bästa-möjliga-skydd. Testa på en sida med inbäddad video. Lazy-laddade iframes som använder `data-src` i stället för `src` fångas inte, och inte heller skript som annan JavaScript laddar efter att sidan visats.
 - **Egen kod** som klistras in måste själv respektera kategorin den ligger under.
 - **Samtyckets giltighetstid**: standard 180 dagar. IMY rekommenderar att samtycke inhämtas på nytt åtminstone årligen.
 - **Samtyckesloggen** är en personuppgiftsbehandling i sig (pseudonymiserad). Nämn den i integritetspolicyn, särskilt om IP-hash är påslagen, och sätt gallringstiden så att den inte är kortare än samtyckets giltighetstid.
@@ -468,17 +554,26 @@ Filstruktur:
 
 ```
 relativt-cookie-consent.php        Huvudfil: konstanter, aktivering, uppdaterare
-uninstall.php                      Städar bort inställningar, loggtabell och cron vid radering
+uninstall.php                      Städar bort inställningar, tabeller, skanningar och cron vid radering
 includes/settings.php              Standardvärden, sanering, inställningssidan
-includes/vendors.php               Skripten för varje verktyg
-includes/frontend.php              Banner, video-gating, kortkod, tillgångar
-includes/consent-log.php           Loggtabell, REST-endpoint, gallring (cron)
+includes/known-domains.php         Kända tredjepartsdomäner (skannerns förslag, signaturer)
+includes/vendors.php               Skripten för varje verktyg, HTML-block för egen kod
+includes/frontend.php              Banner, video-värdar, kortkod, tillgångar
+includes/script-blocking.php       Output-bufferten: video-gating och domänblockering
+includes/cookie-declaration.php    Cookiedeklarationen och kortkoden
+includes/consent-log.php           Tabeller, REST-endpoint för loggen, gallring (cron)
+includes/stats.php                 Visningsräknaren (REST) och sammanställningar
+includes/scanner.php               Skannerns analys, hämtning och AJAX
 includes/rest-config.php           REST-endpointet /rcc/v1/config för headless-frontends
+includes/admin-menu.php            Menyn Cookie Consent och omdirigering från gamla adresser
 includes/admin-consent-log.php     Sidan Samtyckeslogg: lista, filter, CSV-export
+includes/admin-stats.php           Sidan Statistik och panelwidgeten (SVG-diagram)
+includes/admin-scanner.php         Sidan Skanner
 includes/class-rcc-github-updater.php  Uppdateringar från GitHub Releases
 assets/css/relativt-cookie-consent.css Frontend-styling (CSS-variabler)
 assets/js/relativt-cookie-consent.js   Frontend-logik och JS-API
-assets/css/admin.css, assets/js/admin.js  Inställningssidan
+assets/css/admin.css, assets/js/admin.js  Admin-sidorna
+assets/js/admin-scanner.js         Skannerns förlopp
 ```
 
 ## Licens

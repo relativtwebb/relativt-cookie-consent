@@ -17,7 +17,7 @@ function rcc_cookie_name() {
 }
 
 /* -------------------------------------------------------------------------
- * Video-gating
+ * Video-gating (värdar)
  * ---------------------------------------------------------------------- */
 
 /**
@@ -35,82 +35,7 @@ function rcc_gated_iframe_hosts( $s ) {
 	return apply_filters( 'rcc_gated_iframe_hosts', $hosts, $s );
 }
 
-/**
- * Skannar den färdigrenderade sidan efter iframes från blockerade värdar
- * och flyttar src till data-cookiesrc innan HTML:en når webbläsaren.
- * Fångar därmed även inbäddningar som sidbyggare (Oxygen, Elementor,
- * Bricks m.fl.) skriver direkt i mallen, utanför the_content.
- *
- * Körs bara på vanliga frontend-sidor (inte admin/AJAX/REST/cron) och
- * rör bara svar som ser ut som fullständiga HTML-dokument.
- */
-function rcc_maybe_start_output_buffer() {
-	$s = rcc_get_settings();
-	if ( empty( $s['gate_video_embeds'] ) ) {
-		return;
-	}
-	if ( is_admin() || wp_doing_ajax() || wp_doing_cron() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) || is_feed() ) {
-		return;
-	}
-	if ( ! apply_filters( 'rcc_gate_video_on_request', true ) ) {
-		return;
-	}
-	ob_start( 'rcc_filter_iframes_in_output' );
-}
-add_action( 'template_redirect', 'rcc_maybe_start_output_buffer', 0 );
-
-function rcc_filter_iframes_in_output( $html ) {
-	if ( empty( $html ) || false === stripos( $html, '<iframe' ) || false === stripos( $html, '</html>' ) ) {
-		return $html;
-	}
-
-	$hosts = rcc_gated_iframe_hosts( rcc_get_settings() );
-	if ( empty( $hosts ) ) {
-		return $html;
-	}
-
-	return preg_replace_callback(
-		'/<iframe\b([^>]*?)\ssrc=(["\'])((?:https?:)?\/\/[^"\']+)\2([^>]*)>/i',
-		function ( $m ) use ( $hosts ) {
-			$before = $m[1];
-			$src    = $m[3];
-			$after  = $m[4];
-
-			// Redan bearbetad (t.ex. av temat) – rör inte.
-			if ( false !== stripos( $before . $after, 'data-cookiecategory' ) ) {
-				return $m[0];
-			}
-
-			$category = rcc_iframe_category_for_src( $src, $hosts );
-			if ( ! $category ) {
-				return $m[0];
-			}
-
-			return '<iframe' . $before . ' class="rcc-gated-iframe" data-cookiecategory="' . esc_attr( $category ) . '" data-cookiesrc="' . esc_attr( $src ) . '"' . $after . '>';
-		},
-		$html
-	);
-}
-
-/**
- * Returnerar kategorin för en iframe-src, eller null om värden inte ska
- * blockeras.
- */
-function rcc_iframe_category_for_src( $src, $hosts ) {
-	$host = wp_parse_url( html_entity_decode( $src ), PHP_URL_HOST );
-	if ( ! $host ) {
-		return null;
-	}
-	$host = strtolower( $host );
-
-	foreach ( $hosts as $gated_host => $category ) {
-		$gated_host = strtolower( $gated_host );
-		if ( $host === $gated_host || substr( $host, -strlen( '.' . $gated_host ) ) === '.' . $gated_host ) {
-			return $category;
-		}
-	}
-	return null;
-}
+// Själva bearbetningen av HTML:en ligger i script-blocking.php.
 
 /* -------------------------------------------------------------------------
  * Tillgångar
@@ -155,6 +80,7 @@ function rcc_enqueue_assets() {
 		'cookieExpiryDays' => (int) $s['cookie_expiry_days'],
 		'consentVersion'   => max( 1, (int) $s['consent_version'] ),
 		'logEndpoint'      => rcc_consent_log_enabled() ? esc_url_raw( rest_url( 'rcc/v1/consent' ) ) : '',
+		'viewEndpoint'     => rcc_count_banner_views_enabled() ? esc_url_raw( rest_url( 'rcc/v1/view' ) ) : '',
 		'reloadOnRevoke'   => ! empty( $s['reload_on_revoke'] ),
 		'backdrop'         => ( ! empty( $s['show_backdrop'] ) || 'center' === $s['banner_layout'] ),
 		'i18n'             => array(

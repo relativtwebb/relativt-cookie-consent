@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin-sidan Inställningar → Samtyckeslogg: lista med filter och
+ * Admin-sidan Cookie Consent → Samtyckeslogg: lista med filter och
  * sökning, CSV-export och tömning.
  */
 
@@ -8,25 +8,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RCC_LOG_PAGE_SLUG', 'relativt-cookie-consent-log' );
-
-function rcc_add_consent_log_page() {
-	add_options_page(
-		'Samtyckeslogg – Relativt Cookie Consent',
-		'Samtyckeslogg',
-		'manage_options',
-		RCC_LOG_PAGE_SLUG,
-		'rcc_render_consent_log_page'
-	);
-}
-add_action( 'admin_menu', 'rcc_add_consent_log_page' );
-
 function rcc_consent_log_admin_url( $args = array() ) {
-	return add_query_arg( array_merge( array( 'page' => RCC_LOG_PAGE_SLUG ), $args ), admin_url( 'options-general.php' ) );
+	return rcc_admin_page_url( RCC_LOG_PAGE_SLUG, $args );
 }
 
 function rcc_consent_log_admin_assets( $hook ) {
-	if ( 'settings_page_' . RCC_LOG_PAGE_SLUG !== $hook ) {
+	if ( ! rcc_is_admin_page( $hook, RCC_LOG_PAGE_SLUG ) ) {
 		return;
 	}
 	wp_enqueue_style( 'rcc-admin', RCC_PLUGIN_URL . 'assets/css/admin.css', array(), RCC_VERSION );
@@ -224,7 +211,7 @@ function rcc_render_consent_log_page() {
 		<?php endif; ?>
 
 		<?php if ( ! rcc_consent_log_enabled() ) : ?>
-			<div class="notice notice-warning"><p>Loggningen är avstängd. Nya val sparas inte förrän den slås på under <a href="<?php echo esc_url( admin_url( 'options-general.php?page=relativt-cookie-consent#rcc-tab-general' ) ); ?>">Cookie Consent → Allmänt</a>.</p></div>
+			<div class="notice notice-warning"><p>Loggningen är avstängd. Nya val sparas inte förrän den slås på under <a href="<?php echo esc_url( rcc_admin_page_url() . '#rcc-tab-general' ); ?>">Cookie Consent → Inställningar → Allmänt</a>.</p></div>
 		<?php endif; ?>
 
 		<p>Varje val en besökare gör i cookie-rutan sparas här som bevis på att samtycke inhämtats. Besökaren ser sitt samtyckes-ID i cookie-inställningarna och kan uppge det vid en förfrågan – sök på ID:t för att se personens hela historik. Poster äldre än <strong><?php echo (int) $s['consent_log_retention_months']; ?> månader</strong> gallras automatiskt varje dygn. Totalt <strong><?php echo number_format_i18n( $total_all ); ?></strong> poster.</p>
@@ -276,7 +263,7 @@ function rcc_handle_export_consent_log() {
 	$out = fopen( 'php://output', 'w' );
 	fwrite( $out, "\xEF\xBB\xBF" ); // BOM så att Excel läser åäö rätt.
 
-	fputcsv( $out, array( 'Samtyckes-ID', 'Tidpunkt (' . wp_timezone_string() . ')', 'Tidpunkt (UTC)', 'Status', $s['statistics_label'], $s['marketing_label'], 'Land', 'Samtyckesversion', 'Plugin-version', 'IP-hash', 'User agent' ), ';' );
+	fputcsv( $out, array( 'Samtyckes-ID', 'Tidpunkt (' . wp_timezone_string() . ')', 'Tidpunkt (UTC)', 'Status', $s['statistics_label'], $s['marketing_label'], 'Land', 'Samtyckesversion', 'Plugin-version', 'IP-hash', 'User agent' ), ';', '"', '\\' );
 
 	foreach ( $rows as $row ) {
 		fputcsv( $out, array(
@@ -291,7 +278,7 @@ function rcc_handle_export_consent_log() {
 			$row['plugin_version'],
 			$row['ip_hash'],
 			$row['user_agent'],
-		), ';' );
+		), ';', '"', '\\' );
 	}
 
 	fclose( $out );

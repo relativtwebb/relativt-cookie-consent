@@ -438,3 +438,37 @@ html.rcc-lock body {
 	color: inherit;
 	user-select: all;
 }
+
+/* Cookiedeklarationen ([relativt_cookie_declaration]). Ärver temats
+   typsnitt och färger; bara tabellens struktur sätts här. */
+
+.rcc-declaration__category {
+	margin: 0 0 2em;
+}
+
+.rcc-declaration__scroll {
+	overflow-x: auto;
+}
+
+.rcc-declaration__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9em;
+}
+
+.rcc-declaration__table th,
+.rcc-declaration__table td {
+	text-align: left;
+	vertical-align: top;
+	padding: 0.5em 0.75em;
+	border-bottom: 1px solid rgba( 0, 0, 0, 0.12 );
+}
+
+.rcc-declaration__table th {
+	font-weight: 600;
+}
+
+.rcc-declaration__table code {
+	font-size: 0.95em;
+	overflow-wrap: anywhere;
+}

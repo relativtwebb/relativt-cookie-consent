@@ -102,7 +102,7 @@ function rcc_consent_mode_defaults() {
 function rcc_output_consent_mode_default() {
 	$defaults = rcc_consent_mode_defaults();
 	?>
-	<script>
+	<script data-rcc-core="1">
 	window.dataLayer = window.dataLayer || [];
 	function gtag(){ dataLayer.push(arguments); }
 	gtag('consent', 'default', <?php echo wp_json_encode( $defaults ); ?>);
@@ -122,7 +122,7 @@ function rcc_output_gtm_always() {
 	if ( empty( $s['gtm_container_id'] ) || 'always' !== $s['gtm_load_mode'] ) {
 		return;
 	}
-	echo '<script>';
+	echo '<script data-rcc-core="1">';
 	rcc_gtm_snippet( $s['gtm_container_id'] );
 	echo '</script>' . "\n";
 }
@@ -364,19 +364,36 @@ function rcc_output_snapchat( $s ) {
 }
 
 /**
+ * Skriver ut ett block rå HTML (t.ex. flera <script>-taggar och en
+ * <img>-pixel) som blockeras tills samtycke.
+ *
+ * Blocket läggs som en JSON-sträng i <script type="application/json">.
+ * JSON_HEX_TAG gör om alla < och > till </>, så ingenting i
+ * koden kan stänga omslaget i förtid. Före 1.3.0 låg koden rått i
+ * <script type="text/plain">, och då stängde första </script> i den
+ * inklistrade koden omslaget, så att resten kördes utan samtycke.
+ *
+ * JS-filen tolkar strängen som HTML och kör skripten i tur och ordning
+ * när besökaren samtyckt till kategorin.
+ */
+function rcc_output_html_block( $category, $html ) {
+	if ( '' === trim( (string) $html ) ) {
+		return;
+	}
+	printf(
+		'<script type="application/json" data-rcc-html-block="1" data-cookiecategory="%s">%s</script>' . "\n",
+		esc_attr( $category ),
+		wp_json_encode( (string) $html, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES )
+	);
+}
+
+/**
  * Egen kod per kategori. Kan innehålla en blandning av <script>- och
- * andra taggar, så blocket körs genom data-html-block-mekanismen i
- * JS-filen i stället för att klonas som ett enda skript.
+ * andra taggar och skrivs därför ut som ett HTML-block.
  */
 function rcc_output_custom_code( $s ) {
 	foreach ( array( 'statistics', 'marketing' ) as $category ) {
-		$code = $s[ 'custom_code_' . $category ];
-		if ( empty( $code ) ) {
-			continue;
-		}
-		rcc_blocked_script_open( $category, 'data-html-block="1"' );
-		echo $code; // phpcs:ignore -- sparas redan kontrollerat (kräver unfiltered_html) i rcc_sanitize_custom_code().
-		echo '</script>';
+		rcc_output_html_block( $category, $s[ 'custom_code_' . $category ] );
 	}
 }
 

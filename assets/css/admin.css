@@ -26,7 +26,7 @@
 
 /* Samtyckesloggen */
 
-.rcc-consent-log .rcc-badge {
+.rcc-settings .rcc-badge {
 	display: inline-block;
 	padding: 2px 8px;
 	border-radius: 3px;
@@ -35,26 +35,43 @@
 	font-weight: 500;
 }
 
-.rcc-consent-log .rcc-badge--accepted {
+/* Samma nyanser som i statistikens diagram: accepterat blått, avvisat
+   orange, delvis grönblått. */
+.rcc-settings .rcc-badge--accepted {
+	background: #e3eefa;
+	color: #1d5aa8;
+}
+
+.rcc-settings .rcc-badge--rejected {
+	background: #fdeae2;
+	color: #a3401a;
+}
+
+.rcc-settings .rcc-badge--partial {
+	background: #dcf3ea;
+	color: #136b4b;
+}
+
+.rcc-settings .rcc-badge--ok {
 	background: #e3f5e8;
 	color: #1a6b32;
 }
 
-.rcc-consent-log .rcc-badge--rejected {
-	background: #fbe4e4;
-	color: #a32020;
+.rcc-settings .rcc-badge--warn {
+	background: #fcf0d6;
+	color: #7a4f00;
 }
 
-.rcc-consent-log .rcc-badge--partial {
-	background: #e5f0fb;
-	color: #1d5aa8;
+.rcc-settings .rcc-badge--neutral {
+	background: #f0f0f1;
+	color: #50575e;
 }
 
-.rcc-consent-log .rcc-muted {
-	color: #8c8f94;
+.rcc-settings .rcc-muted {
+	color: #646970;
 }
 
-.rcc-consent-log .rcc-inline-form {
+.rcc-settings .rcc-inline-form {
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -68,4 +85,275 @@
 .rcc-consent-log .column-status,
 .rcc-consent-log .column-country {
 	width: 9%;
+}
+
+/* Kort och nyckeltal (statistik, skanner) */
+
+.rcc-settings .rcc-card {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	padding: 16px 20px;
+	margin: 16px 0;
+}
+
+.rcc-settings .rcc-card h2 {
+	margin: 0 0 12px;
+	font-size: 14px;
+}
+
+.rcc-stats .rcc-periods {
+	float: left;
+	margin: 8px 16px 0 0;
+}
+
+.rcc-stats .rcc-period-range {
+	float: left;
+	margin: 8px 0 0;
+	color: #646970;
+}
+
+.rcc-kpis {
+	display: grid;
+	grid-template-columns: repeat( auto-fit, minmax( 150px, 1fr ) );
+	gap: 12px;
+	margin: 16px 0;
+}
+
+.rcc-kpi {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	padding: 12px 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.rcc-kpi__label {
+	color: #50575e;
+	font-size: 13px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.rcc-kpi__value {
+	font-size: 26px;
+	line-height: 1.2;
+	font-weight: 600;
+	color: #1d2327;
+	font-variant-numeric: tabular-nums;
+}
+
+.rcc-kpi__sub {
+	color: #646970;
+	font-size: 12px;
+}
+
+.rcc-stats-grid {
+	display: grid;
+	grid-template-columns: minmax( 260px, 1fr ) 2fr;
+	gap: 16px;
+}
+
+.rcc-stats-grid .rcc-card {
+	margin: 0;
+}
+
+@media ( max-width: 960px ) {
+	.rcc-stats-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.rcc-donut-wrap {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	flex-wrap: wrap;
+}
+
+.rcc-donut__seg:hover {
+	opacity: 0.85;
+}
+
+.rcc-donut__value {
+	font-size: 24px;
+	font-weight: 600;
+	fill: #1d2327;
+}
+
+.rcc-donut__label {
+	font-size: 12px;
+	fill: #646970;
+}
+
+.rcc-legend {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 18px;
+}
+
+.rcc-donut-wrap .rcc-legend {
+	flex-direction: column;
+}
+
+.rcc-legend li {
+	margin: 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.rcc-legend__swatch {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	flex: 0 0 auto;
+}
+
+.rcc-legend strong {
+	font-variant-numeric: tabular-nums;
+}
+
+.rcc-chart {
+	display: block;
+	width: 100%;
+	height: auto;
+	max-height: 280px;
+}
+
+.rcc-chart__grid {
+	stroke: #f0f0f1;
+	stroke-width: 1;
+}
+
+.rcc-chart__base {
+	stroke: #c3c4c7;
+	stroke-width: 1;
+}
+
+.rcc-chart__tick {
+	font-size: 11px;
+	fill: #646970;
+	font-variant-numeric: tabular-nums;
+}
+
+.rcc-chart__hit {
+	fill: transparent;
+}
+
+.rcc-chart__hit:hover {
+	fill: rgba( 0, 0, 0, 0.04 );
+}
+
+.rcc-stats-table summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.rcc-stats-table table {
+	margin-top: 12px;
+}
+
+.rcc-stats-table .num {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.rcc-stats .rcc-empty {
+	font-size: 14px;
+	color: #646970;
+}
+
+.rcc-stats-note {
+	max-width: 760px;
+}
+
+.rcc-widget .rcc-donut-wrap {
+	gap: 16px;
+}
+
+.rcc-widget__meta {
+	margin-bottom: 0;
+}
+
+/* Skannern */
+
+.rcc-scan-form textarea {
+	max-width: 640px;
+}
+
+.rcc-scan-progress progress {
+	width: 100%;
+	max-width: 640px;
+	height: 12px;
+}
+
+.rcc-scan-table td {
+	vertical-align: top;
+}
+
+.rcc-scan-table .rcc-inline-form {
+	display: inline-flex;
+	margin: 0 6px 6px 0;
+}
+
+.rcc-scan-table .rcc-muted {
+	margin: 4px 0 0;
+}
+
+.rcc-samples summary {
+	cursor: pointer;
+	color: #2271b1;
+	font-size: 12px;
+}
+
+.rcc-samples code {
+	display: block;
+	margin-top: 4px;
+	font-size: 11px;
+	word-break: break-all;
+	max-width: 420px;
+}
+
+.rcc-scan-row--unblocked td:first-child,
+.rcc-scan-row--conflict td:first-child {
+	box-shadow: inset 3px 0 0 #dba617;
+}
+
+.rcc-scan-pages summary {
+	cursor: pointer;
+}
+
+.rcc-settings .rcc-error {
+	color: #b32d2e;
+}
+
+/* Förhandsvisning av cookiedeklarationen */
+
+.rcc-declaration-preview {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	padding: 4px 20px 12px;
+	max-width: 980px;
+}
+
+.rcc-declaration-preview .rcc-declaration__table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.rcc-declaration-preview .rcc-declaration__table th,
+.rcc-declaration-preview .rcc-declaration__table td {
+	text-align: left;
+	padding: 6px 8px;
+	border-bottom: 1px solid #f0f0f1;
+	vertical-align: top;
 }

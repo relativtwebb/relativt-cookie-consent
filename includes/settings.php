@@ -41,9 +41,16 @@ function rcc_default_settings() {
 		'youtube_category'      => 'marketing',
 		'vimeo_category'        => 'marketing',
 
+		// Domänblockering (skript och iframes från andra plugin/temat).
+		'blocked_domains_statistics' => '',
+		'blocked_domains_marketing'  => '',
+
 		// Egen kod per kategori.
 		'custom_code_statistics' => '',
 		'custom_code_marketing'  => '',
+
+		// Cookiedeklaration: egna cookies, en per rad.
+		'custom_cookies'         => '',
 
 		// Allmänt.
 		'privacy_url'              => '/integritetspolicy/',
@@ -57,6 +64,7 @@ function rcc_default_settings() {
 		'consent_log_enabled'          => 1,
 		'consent_log_retention_months' => 12,
 		'consent_log_ip_hash'          => 0,
+		'count_banner_views'           => 1,
 
 		// Texter i cookie-rutan.
 		'banner_heading'      => 'Vi använder cookies',
@@ -126,8 +134,13 @@ function rcc_settings_schema() {
 		'youtube_category'      => array( 'type' => 'select', 'options' => array( 'marketing', 'statistics' ) ),
 		'vimeo_category'        => array( 'type' => 'select', 'options' => array( 'marketing', 'statistics' ) ),
 
+		'blocked_domains_statistics' => array( 'type' => 'domains' ),
+		'blocked_domains_marketing'  => array( 'type' => 'domains' ),
+
 		'custom_code_statistics' => array( 'type' => 'code' ),
 		'custom_code_marketing'  => array( 'type' => 'code' ),
+
+		'custom_cookies'         => array( 'type' => 'textarea' ),
 
 		'privacy_url'              => array( 'type' => 'text' ),
 		'cookie_expiry_days'       => array( 'type' => 'int', 'min' => 1, 'max' => 730 ),
@@ -139,6 +152,7 @@ function rcc_settings_schema() {
 		'consent_log_enabled'          => array( 'type' => 'checkbox' ),
 		'consent_log_retention_months' => array( 'type' => 'int', 'min' => 1, 'max' => 120 ),
 		'consent_log_ip_hash'          => array( 'type' => 'checkbox' ),
+		'count_banner_views'           => array( 'type' => 'checkbox' ),
 
 		'banner_heading'         => array( 'type' => 'text' ),
 		'banner_text'            => array( 'type' => 'textarea' ),
@@ -199,12 +213,22 @@ add_action( 'admin_init', 'rcc_register_settings' );
  * administratörer). Annars städas markup bort, så att ingen med lägre
  * behörighet kan smyga in skript på sajten.
  */
-function rcc_sanitize_custom_code( $value ) {
+function rcc_sanitize_custom_code( $value, $key = '' ) {
 	if ( ! is_string( $value ) ) {
 		return '';
 	}
 	if ( current_user_can( 'unfiltered_html' ) ) {
 		return $value;
+	}
+	// Oförändrad kod får stå kvar. Annars skulle en användare utan
+	// unfiltered_html (t.ex. en administratör på en multisite) radera all
+	// egen kod bara genom att spara någon annan inställning, och
+	// skannerns "Blockera"-knapp skulle göra samma sak.
+	if ( $key ) {
+		$saved = get_option( RCC_OPTION_KEY, array() );
+		if ( is_array( $saved ) && isset( $saved[ $key ] ) && $saved[ $key ] === $value ) {
+			return $value;
+		}
 	}
 	return sanitize_textarea_field( $value );
 }
@@ -264,7 +288,11 @@ function rcc_sanitize_settings( $input ) {
 				break;
 
 			case 'code':
-				$output[ $key ] = rcc_sanitize_custom_code( $raw );
+				$output[ $key ] = rcc_sanitize_custom_code( $raw, $key );
+				break;
+
+			case 'domains':
+				$output[ $key ] = rcc_sanitize_domain_list( $raw );
 				break;
 
 			case 'css':
@@ -293,22 +321,12 @@ function rcc_sanitize_settings( $input ) {
  * Admin-sidan
  * ---------------------------------------------------------------------- */
 
-function rcc_add_settings_page() {
-	add_options_page(
-		'Relativt Cookie Consent',
-		'Cookie Consent',
-		'manage_options',
-		'relativt-cookie-consent',
-		'rcc_render_settings_page'
-	);
-}
-add_action( 'admin_menu', 'rcc_add_settings_page' );
-
 /**
  * Färgväljare och flik-logik laddas bara på pluginets egen sida.
+ * Menyn registreras i admin-menu.php.
  */
 function rcc_admin_assets( $hook ) {
-	if ( 'settings_page_relativt-cookie-consent' !== $hook ) {
+	if ( ! rcc_is_admin_page( $hook, RCC_SETTINGS_SLUG ) ) {
 		return;
 	}
 	wp_enqueue_style( 'wp-color-picker' );
@@ -408,7 +426,8 @@ function rcc_render_settings_page() {
 
 	$tabs = array(
 		'tools'      => 'Verktyg',
-		'video'      => 'Video & egen kod',
+		'video'      => 'Blockering',
+		'cookies'    => 'Cookiedeklaration',
 		'texts'      => 'Texter',
 		'appearance' => 'Utseende',
 		'general'    => 'Allmänt',
@@ -416,6 +435,11 @@ function rcc_render_settings_page() {
 	?>
 	<div class="wrap rcc-settings">
 		<h1>Relativt Cookie Consent <span class="rcc-version">v<?php echo esc_html( RCC_VERSION ); ?></span></h1>
+		<?php
+		// Sidor utanför menyn Inställningar visar inte "Inställningarna
+		// sparade" av sig själva.
+		settings_errors();
+		?>
 		<p>Fyll bara i ID:n för de verktyg sajten faktiskt använder. Tomma fält gör att motsvarande skript aldrig skrivs ut. Alla verktyg utom Google Search Console-verifieringen blockeras tills besökaren samtyckt till rätt kategori.</p>
 
 		<form method="post" action="options.php">
@@ -497,6 +521,16 @@ function rcc_render_settings_page() {
 					?>
 				</table>
 
+				<h2 class="title">Blockera domäner</h2>
+				<p>Skript och inbäddningar från domänerna nedan blockeras tills besökaren samtyckt, även när de skrivs ut av andra plugin, temat eller sidbyggaren. Använd det för verktyg som redan ligger på sajten utanför pluginet. <a href="<?php echo esc_url( rcc_admin_page_url( RCC_SCANNER_SLUG ) ); ?>">Skannern</a> visar vilka domäner som laddas utan att blockeras och kan lägga till dem här med ett klick.</p>
+				<table class="form-table" role="presentation">
+					<?php
+					$domain_help = 'En domän per rad, t.ex. <code>connect.facebook.net</code>. Subdomäner ingår. Blockerar <code>&lt;script src&gt;</code> och iframes från domänen, och inline-skript där domänen står eller som bär ett känt verktygs kod (t.ex. <code>fbq(</code> för Meta). Skript som laddas av annan JavaScript efter att sidan visats fångas inte.';
+					rcc_field_textarea( $s, 'blocked_domains_statistics', 'Statistik', array( 'rows' => 4, 'class' => 'large-text code', 'description' => $domain_help ) );
+					rcc_field_textarea( $s, 'blocked_domains_marketing', 'Marknadsföring', array( 'rows' => 4, 'class' => 'large-text code', 'description' => 'Står en domän i båda listorna räcker samtycke till endera. Lägg inte sajtens egen domän här – den blockeras aldrig.' ) );
+					?>
+				</table>
+
 				<h2 class="title">Egen kod</h2>
 				<p>Klistra in färdiga skript-taggar från verktyg som saknar eget fält (t.ex. Bidtheatre, Upsales, Leadfeeder, Albacross). Koden blockeras och aktiveras precis som de inbyggda verktygen i respektive kategori. Kräver behörigheten <code>unfiltered_html</code> (normalt administratörer) för att sparas med <code>&lt;script&gt;</code>-taggar intakta.</p>
 				<table class="form-table" role="presentation">
@@ -505,6 +539,57 @@ function rcc_render_settings_page() {
 					rcc_field_textarea( $s, 'custom_code_marketing', 'Egen kod – marknadsföring', array( 'rows' => 6, 'class' => 'large-text code' ) );
 					?>
 				</table>
+			</div>
+
+			<div class="rcc-tab-panel" id="rcc-tab-cookies" hidden>
+				<h2 class="title">Cookiedeklaration</h2>
+				<p>Listan över sajtens cookies byggs automatiskt av de verktyg som har ett ID ifyllt, YouTube och Vimeo när videoblockeringen är på, och pluginets egen cookie. Visa den på integritetspolicyn med kortkoden <code>[relativt_cookie_declaration]</code>. Vill du bara visa en kategori: <code>[relativt_cookie_declaration category="marknadsföring"]</code>.</p>
+				<table class="form-table" role="presentation">
+					<?php
+					rcc_field_textarea( $s, 'custom_cookies', 'Egna cookies', array(
+						'rows'        => 6,
+						'class'       => 'large-text code',
+						'description' => 'För verktyg under Egen kod eller Blockera domäner, och annat som sätter cookies. En cookie per rad: <code>namn | leverantör | kategori | syfte | lagringstid</code>, t.ex. <code>_upsales_visitor | Upsales | marknadsföring | Känner igen återkommande företagsbesök. | 1 år</code>. Kategori: nödvändiga, statistik eller marknadsföring.',
+					) );
+					?>
+				</table>
+				<?php
+				rcc_parse_custom_cookies( $s['custom_cookies'], $cookie_errors );
+				if ( $cookie_errors ) :
+					?>
+					<div class="notice notice-warning inline"><p>Raderna nedan kunde inte läsas (saknar namn eller har okänd kategori) och visas inte:</p><ul>
+						<?php foreach ( $cookie_errors as $error ) : ?>
+							<li><code><?php echo esc_html( $error ); ?></code></li>
+						<?php endforeach; ?>
+					</ul></div>
+				<?php endif; ?>
+				<?php
+				$gtm_note     = ! empty( $s['gtm_container_id'] );
+				$domain_count = count( rcc_blocked_domains( $s ) );
+				$custom_code  = '' !== trim( $s['custom_code_statistics'] . $s['custom_code_marketing'] );
+				if ( $gtm_note || $domain_count || $custom_code ) :
+					?>
+					<div class="notice notice-info inline"><p>Pluginet vet inte vilka cookies som sätts av
+						<?php
+						$parts = array();
+						if ( $gtm_note ) {
+							$parts[] = 'taggarna i Google Tag Manager';
+						}
+						if ( $custom_code ) {
+							$parts[] = 'Egen kod';
+						}
+						if ( $domain_count ) {
+							$parts[] = sprintf( 'de %d blockerade domänerna', $domain_count );
+						}
+						$last = array_pop( $parts );
+						echo esc_html( $parts ? implode( ', ', $parts ) . ' och ' . $last : $last );
+						?>. Lägg till dem under Egna cookies.</p></div>
+				<?php endif; ?>
+				<h2 class="title">Förhandsvisning</h2>
+				<p class="description">Så här ser listan ut med de sparade inställningarna. Spara för att se ändringar.</p>
+				<div class="rcc-declaration-preview">
+					<?php echo rcc_render_cookie_declaration( $s, array( 'heading_tag' => 'h4' ) ); // phpcs:ignore -- escapat i funktionen. ?>
+				</div>
 			</div>
 
 			<div class="rcc-tab-panel" id="rcc-tab-texts" hidden>
@@ -607,11 +692,12 @@ function rcc_render_settings_page() {
 				</table>
 
 				<h2 class="title">Samtyckeslogg</h2>
-				<p>Loggen sparar varje val som bevis på att samtycke inhämtats (GDPR art. 7.1). Visas under <a href="<?php echo esc_url( admin_url( 'options-general.php?page=relativt-cookie-consent-log' ) ); ?>">Inställningar → Samtyckeslogg</a> där den också kan exporteras som CSV.</p>
+				<p>Loggen sparar varje val som bevis på att samtycke inhämtats (GDPR art. 7.1). Visas under <a href="<?php echo esc_url( rcc_admin_page_url( RCC_LOG_PAGE_SLUG ) ); ?>">Cookie Consent → Samtyckeslogg</a> där den också kan exporteras som CSV.</p>
 				<table class="form-table" role="presentation">
 					<?php
 					rcc_field_checkbox( $s, 'consent_log_enabled', 'Loggning', 'Spara besökarnas val i samtyckesloggen', 'Sparas: slumpat samtyckes-ID, tidpunkt, valda kategorier, land (om servern eller CDN:et skickar det, t.ex. Cloudflare), samtyckesversion, plugin-version och webbläsarsträng. Ingen IP-adress om inte rutan nedan är ikryssad.' );
 					rcc_field_text( $s, 'consent_log_retention_months', 'Gallring efter (månader)', array( 'type' => 'number', 'class' => 'small-text', 'attrs' => 'min="1" max="120"', 'description' => 'Poster äldre än så raderas automatiskt varje dygn. Standard 12 månader. Sätt inte kortare än samtyckets giltighetstid ovan.' ) );
+					rcc_field_checkbox( $s, 'count_banner_views', 'Visningar', 'Räkna hur många gånger rutan visas, till statistiken', 'Bara en räknare per dag, inga uppgifter om besökaren. Behövs för svarsfrekvensen under <a href="' . esc_url( rcc_admin_page_url( RCC_STATS_SLUG ) ) . '">Statistik</a>.' );
 					rcc_field_checkbox( $s, 'consent_log_ip_hash', 'IP-adress', 'Spara en saltad hash av besökarens IP-adress', 'Hashen går inte att vända till en IP-adress men ger starkare bevisvärde. Nämn i integritetspolicyn om ni slår på detta.' );
 					?>
 				</table>

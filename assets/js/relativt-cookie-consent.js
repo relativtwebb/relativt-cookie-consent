@@ -7,7 +7,8 @@
  *
  * Samtyckescookien innehåller ett slumpat ID och versionsnumret från
  * inställningen "Samtyckesversion". Är versionen äldre än sajtens visas
- * rutan igen. Varje val rapporteras till samtyckesloggen (REST).
+ * rutan igen. Varje val rapporteras till samtyckesloggen (REST), och
+ * varje automatisk visning av rutan räknas till statistiken.
  *
  * Publikt API: window.rcc (se längst ner).
  * Event: "rcc_consent_updated" på document (detail = samtyckesobjektet)
@@ -23,6 +24,7 @@
 	var USE_BACKDROP = !! settings.backdrop;
 	var CONSENT_VERSION = parseInt( settings.consentVersion, 10 ) || 1;
 	var LOG_ENDPOINT = settings.logEndpoint || '';
+	var VIEW_ENDPOINT = settings.viewEndpoint || '';
 	var i18n = settings.i18n || {};
 	var CATEGORIES = [ 'statistics', 'marketing' ];
 
@@ -175,6 +177,25 @@
 		}
 	}
 
+	/**
+	 * Räknar en visning av rutan till statistiken. Skickar ingenting om
+	 * besökaren: ingen cookie, inget ID, ingen kropp.
+	 */
+	function countView() {
+		if ( ! VIEW_ENDPOINT || ! window.fetch ) {
+			return;
+		}
+		try {
+			window.fetch( VIEW_ENDPOINT, {
+				method: 'POST',
+				credentials: 'omit',
+				keepalive: true
+			} ).catch( function () {} );
+		} catch ( e ) {
+			// Räkningen är best effort.
+		}
+	}
+
 	function formatDate( iso ) {
 		var d = iso ? new Date( iso ) : null;
 		if ( ! d || isNaN( d.getTime() ) ) {
@@ -204,71 +225,242 @@
 	 * ------------------------------------------------------------ */
 
 	/**
-	 * Flyttar in ett block rå HTML (data-html-block) i den levande sidan.
-	 * <script>-noder återskapas så att de faktiskt exekverar, övriga
-	 * noder (t.ex. <img>, <noscript>) flyttas in oförändrade.
+	 * Blockerade element finns i tre former:
+	 *
+	 * 1. <script type="text/plain" data-cookiecategory="..."> – ett
+	 *    enskilt skript, inline eller med data-cookiesrc. Skrivs ut av
+	 *    de inbyggda verktygen och av domänblockeringen.
+	 * 2. <script type="application/json" data-rcc-html-block> – ett block
+	 *    rå HTML (egen kod) lagrat som JSON-sträng.
+	 * 3. <script type="text/plain" data-html-block> – samma sak i det
+	 *    äldre formatet (rå HTML), kvar för kod som anropar
+	 *    rcc_blocked_script_open() med data-html-block.
+	 *
+	 * Allt körs i en kö i dokumentordning. Ett externt skript utan
+	 * async/defer måste ladda klart innan nästa körs, precis som när
+	 * webbläsaren läser sidan. Annars kan ett inline-skript som anropar
+	 * ett bibliotek köras innan biblioteket finns.
 	 */
-	function activateHtmlBlock( oldScript ) {
-		var temp = document.createElement( 'div' );
-		temp.innerHTML = oldScript.textContent;
+	var BLOCKED_SELECTOR = 'script[type="text/plain"][data-cookiecategory], script[type="application/json"][data-rcc-html-block][data-cookiecategory]';
+	var SCRIPT_TIMEOUT = 10000;
 
-		var frag = document.createDocumentFragment();
-		Array.prototype.slice.call( temp.childNodes ).forEach( function ( node ) {
-			if ( node.nodeType === 1 && 'SCRIPT' === node.tagName ) {
-				var s = document.createElement( 'script' );
-				Array.prototype.slice.call( node.attributes ).forEach( function ( attr ) {
-					s.setAttribute( attr.name, attr.value );
-				} );
-				s.text = node.textContent;
-				frag.appendChild( s );
-			} else {
-				frag.appendChild( node );
+	var queue = [];
+	var running = false;
+
+	function runQueue() {
+		if ( running ) {
+			return;
+		}
+		var job = queue.shift();
+		if ( ! job ) {
+			return;
+		}
+		running = true;
+		var finished = false;
+		job( function () {
+			if ( finished ) {
+				return;
 			}
+			finished = true;
+			running = false;
+			runQueue();
 		} );
+	}
 
-		oldScript.parentNode.replaceChild( frag, oldScript );
+	function enqueue( job ) {
+		queue.push( job );
+		runQueue();
+	}
+
+	function once( fn ) {
+		var called = false;
+		return function () {
+			if ( ! called ) {
+				called = true;
+				fn();
+			}
+		};
 	}
 
 	/**
-	 * Aktiverar alla blockerade skript för en kategori. Ett skript kan
-	 * ange flera kategorier ("statistics marketing") och aktiveras då av
-	 * endera. Redan aktiverade skript är inte längre type="text/plain"
-	 * och hittas därför inte igen.
+	 * Skapar ett körbart <script> från ett blockerat eller inert skript.
+	 * Skript som tolkats via innerHTML/<template> körs aldrig av
+	 * webbläsaren, så de måste alltid återskapas.
 	 */
-	function activateScripts( category ) {
-		var blocked = document.querySelectorAll( 'script[type="text/plain"][data-cookiecategory]' );
+	function makeScript( old ) {
+		var s = document.createElement( 'script' );
+		var originalType = old.getAttribute( 'data-rcc-type' );
+		var blocked = 'text/plain' === ( old.getAttribute( 'type' ) || '' ).toLowerCase() && old.hasAttribute( 'data-cookiecategory' );
 
-		Array.prototype.slice.call( blocked ).forEach( function ( oldScript ) {
-			var cats = ( oldScript.getAttribute( 'data-cookiecategory' ) || '' ).split( /\s+/ ).filter( Boolean );
-			if ( cats.indexOf( category ) === -1 ) {
+		for ( var i = 0; i < old.attributes.length; i++ ) {
+			var attr = old.attributes[ i ];
+			if ( 'data-cookiesrc' === attr.name ) {
+				s.setAttribute( 'src', attr.value );
+				continue;
+			}
+			if ( ( 'type' === attr.name && blocked ) || 'data-rcc-type' === attr.name || 'data-rcc-queued' === attr.name ) {
+				continue;
+			}
+			s.setAttribute( attr.name, attr.value );
+		}
+
+		if ( blocked ) {
+			s.type = originalType || 'text/javascript';
+		}
+		if ( ! s.src && old.text ) {
+			s.text = old.text;
+		}
+		// Dynamiskt skapade skript är async som standard. Utan
+		// async-attribut ska de i stället köras i tur och ordning.
+		if ( s.src && ! old.hasAttribute( 'async' ) ) {
+			s.async = false;
+		}
+		return s;
+	}
+
+	/**
+	 * Lägger in ett körbart skript före ref och anropar done när nästa
+	 * steg får köras: direkt för inline- och async-skript, efter
+	 * load/error för externa skript som ska köras i ordning.
+	 */
+	function insertScript( s, parent, ref, done ) {
+		var waits = !! s.src && ! s.async && ! s.hasAttribute( 'defer' ) && 'module' !== s.type;
+		if ( waits ) {
+			var next = once( done );
+			s.onload = next;
+			s.onerror = next;
+			window.setTimeout( next, SCRIPT_TIMEOUT );
+		}
+		parent.insertBefore( s, ref );
+		if ( ! waits ) {
+			done();
+		}
+	}
+
+	/**
+	 * Gör alla inerta <script> inuti ett redan inlagt element körbara,
+	 * ett i taget.
+	 */
+	function runInnerScripts( el, done ) {
+		var inner = el.nodeType === 1 && el.querySelectorAll ? Array.prototype.slice.call( el.querySelectorAll( 'script' ) ) : [];
+		var i = 0;
+		( function step() {
+			if ( i >= inner.length ) {
+				done();
 				return;
 			}
-
-			if ( oldScript.hasAttribute( 'data-html-block' ) ) {
-				activateHtmlBlock( oldScript );
+			var old = inner[ i++ ];
+			if ( ! old.parentNode ) {
+				step();
 				return;
 			}
-
-			var newScript = document.createElement( 'script' );
-
-			for ( var i = 0; i < oldScript.attributes.length; i++ ) {
-				var attr = oldScript.attributes[ i ];
-				if ( 'type' === attr.name ) {
-					continue;
+			insertScript( makeScript( old ), old.parentNode, old, function () {
+				if ( old.parentNode ) {
+					old.parentNode.removeChild( old );
 				}
-				if ( 'data-cookiesrc' === attr.name ) {
-					newScript.src = attr.value;
-					continue;
-				}
-				newScript.setAttribute( attr.name, attr.value );
-			}
+				step();
+			} );
+		} )();
+	}
 
-			newScript.type = 'text/javascript';
-			if ( oldScript.text ) {
-				newScript.text = oldScript.text;
+	/**
+	 * Lägger in noderna före ref i tur och ordning och kör skripten.
+	 */
+	function insertNodes( nodes, parent, ref, done ) {
+		var i = 0;
+		( function step() {
+			if ( i >= nodes.length ) {
+				done();
+				return;
 			}
+			var node = nodes[ i++ ];
+			if ( node.nodeType === 1 && 'SCRIPT' === node.tagName ) {
+				insertScript( makeScript( node ), parent, ref, step );
+				return;
+			}
+			parent.insertBefore( node, ref );
+			runInnerScripts( node, step );
+		} )();
+	}
 
-			oldScript.parentNode.replaceChild( newScript, oldScript );
+	/**
+	 * Tolkar HTML-blocket. <noscript> tas bort: i en <template> blir
+	 * innehållet riktiga element, och en <img>-pixel i <noscript> skulle
+	 * då laddas och räkna besöket en gång till utöver skriptet.
+	 */
+	function parseHtml( html ) {
+		var tpl = document.createElement( 'template' );
+		var root;
+		if ( 'content' in tpl ) {
+			tpl.innerHTML = html;
+			root = tpl.content;
+		} else {
+			root = document.createElement( 'div' );
+			root.innerHTML = html;
+		}
+		Array.prototype.slice.call( root.querySelectorAll( 'noscript' ) ).forEach( function ( el ) {
+			el.parentNode.removeChild( el );
+		} );
+		return Array.prototype.slice.call( root.childNodes );
+	}
+
+	function htmlBlockSource( el ) {
+		if ( el.hasAttribute( 'data-rcc-html-block' ) ) {
+			try {
+				var html = JSON.parse( el.textContent || '""' );
+				return 'string' === typeof html ? html : '';
+			} catch ( e ) {
+				return '';
+			}
+		}
+		return el.textContent || '';
+	}
+
+	function activateElement( el, done ) {
+		var parent = el.parentNode;
+		if ( ! parent ) {
+			done();
+			return;
+		}
+		var remove = function () {
+			if ( el.parentNode ) {
+				el.parentNode.removeChild( el );
+			}
+			done();
+		};
+
+		if ( el.hasAttribute( 'data-rcc-html-block' ) || el.hasAttribute( 'data-html-block' ) ) {
+			insertNodes( parseHtml( htmlBlockSource( el ) ), parent, el, remove );
+			return;
+		}
+
+		insertScript( makeScript( el ), parent, el, remove );
+	}
+
+	/**
+	 * Köar alla blockerade element som någon av de godkända kategorierna
+	 * låser upp. Ett element kan ange flera kategorier ("statistics
+	 * marketing") och aktiveras då av endera. Köade element märks så att
+	 * de aldrig körs två gånger.
+	 */
+	function activateScripts( consent ) {
+		var blocked = document.querySelectorAll( BLOCKED_SELECTOR );
+
+		Array.prototype.slice.call( blocked ).forEach( function ( el ) {
+			if ( el.hasAttribute( 'data-rcc-queued' ) ) {
+				return;
+			}
+			var cats = ( el.getAttribute( 'data-cookiecategory' ) || '' ).split( /\s+/ ).filter( Boolean );
+			var allowed = cats.some( function ( cat ) {
+				return !! consent[ cat ];
+			} );
+			if ( ! allowed ) {
+				return;
+			}
+			el.setAttribute( 'data-rcc-queued', '1' );
+			enqueue( function ( done ) {
+				activateElement( el, done );
+			} );
 		} );
 	}
 
@@ -296,11 +488,7 @@
 			rcc_marketing: !! consent.marketing
 		} );
 
-		CATEGORIES.forEach( function ( cat ) {
-			if ( consent[ cat ] ) {
-				activateScripts( cat );
-			}
-		} );
+		activateScripts( consent );
 	}
 
 	/* ---------------------------------------------------------------
@@ -313,21 +501,31 @@
 	 * som fortfarande väntar på samtycke, och riktig src sätts på de som
 	 * redan har det.
 	 */
+	function categoriesOf( el ) {
+		return ( el.getAttribute( 'data-cookiecategory' ) || '' ).split( /\s+/ ).filter( Boolean );
+	}
+
 	function setupGatedIframe( iframe, consent ) {
-		var category = iframe.getAttribute( 'data-cookiecategory' );
+		var cats = categoriesOf( iframe );
 		var realSrc = iframe.getAttribute( 'data-cookiesrc' );
-		if ( ! category || ! realSrc ) {
+		if ( ! cats.length || ! realSrc ) {
 			return;
 		}
+		// En iframe kan ange flera kategorier ("statistics marketing") och
+		// visas då när endera är godkänd. Knappen ber om den första.
+		var category = cats[ 0 ];
+		var allowed = !! consent && cats.some( function ( cat ) {
+			return !! consent[ cat ];
+		} );
 
-		if ( consent && consent[ category ] ) {
+		if ( allowed ) {
 			if ( iframe.getAttribute( 'src' ) !== realSrc ) {
 				iframe.src = realSrc;
 			}
-			var existingOverlay = iframe.parentElement ? iframe.parentElement.querySelector( '.rcc-iframe-overlay' ) : null;
-			if ( existingOverlay ) {
-				existingOverlay.parentNode.removeChild( existingOverlay );
+			if ( iframe.rccOverlay && iframe.rccOverlay.parentNode ) {
+				iframe.rccOverlay.parentNode.removeChild( iframe.rccOverlay );
 			}
+			iframe.rccOverlay = null;
 			return;
 		}
 
@@ -365,6 +563,7 @@
 		} );
 
 		overlay.appendChild( btn );
+		iframe.rccOverlay = overlay;
 
 		if ( parent ) {
 			parent.insertBefore( overlay, iframe.nextSibling );
@@ -372,7 +571,9 @@
 	}
 
 	function activateGatedIframes( consent ) {
-		var iframes = document.querySelectorAll( 'iframe.rcc-gated-iframe[data-cookiesrc]' );
+		// Klassen rcc-gated-iframe används för CSS, men urvalet går på
+		// attributen så att en iframe med två class-attribut ändå hittas.
+		var iframes = document.querySelectorAll( 'iframe[data-cookiesrc][data-cookiecategory]' );
 		Array.prototype.slice.call( iframes ).forEach( function ( iframe ) {
 			setupGatedIframe( iframe, consent );
 		} );
@@ -523,6 +724,7 @@
 			}
 		} else {
 			showBanner();
+			countView();
 		}
 
 		if ( toggleBtn ) {

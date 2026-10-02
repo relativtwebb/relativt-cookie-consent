@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RCC_DB_VERSION', '1' );
+define( 'RCC_DB_VERSION', '2' );
 define( 'RCC_CRON_CLEANUP', 'rcc_consent_log_cleanup' );
 
 function rcc_consent_log_table() {
@@ -34,7 +34,7 @@ function rcc_consent_log_enabled() {
  * ---------------------------------------------------------------------- */
 
 /**
- * Skapar eller uppdaterar tabellen. Körs vid aktivering och – eftersom
+ * Skapar eller uppdaterar tabellerna (loggen och visningarna). Körs vid aktivering och – eftersom
  * aktiveringskroken inte körs vid uppdatering via GitHub – även när
  * sparat schemanummer inte matchar RCC_DB_VERSION.
  */
@@ -62,8 +62,18 @@ function rcc_install_consent_log_table() {
 		KEY status (status)
 	) {$charset};";
 
+	// Visningar av cookie-rutan per dag (statistik, sedan 1.3.0). Inga
+	// personuppgifter, bara ett datum och en räknare.
+	$views_table = $wpdb->prefix . 'rcc_banner_views';
+	$sql_views   = "CREATE TABLE {$views_table} (
+		day date NOT NULL,
+		views bigint(20) unsigned NOT NULL DEFAULT 0,
+		PRIMARY KEY  (day)
+	) {$charset};";
+
 	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 	dbDelta( $sql );
+	dbDelta( $sql_views );
 
 	update_option( 'rcc_db_version', RCC_DB_VERSION, false );
 }

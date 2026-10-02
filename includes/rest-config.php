@@ -7,7 +7,7 @@
  * pluginets cookie, HTML eller rccSettings. Endpointet lämnar ut det den
  * behöver för att bete sig som pluginet: texter, cookieformat,
  * samtyckesversion, Consent Mode-defaulten, vilka verktyg som är på och
- * under vilken kategori, samt vart valet ska loggas.
+ * under vilken kategori, cookiedeklarationen samt vart valet ska loggas.
  *
  * Svaret byggs från en uttrycklig lista över nycklar, aldrig "allt utom".
  * Ett fält som läggs till i inställningarna i framtiden kommer alltså inte
@@ -72,10 +72,12 @@ function rcc_rest_config_data( $s ) {
 		),
 		'consent_version'       => max( 1, (int) $s['consent_version'] ),
 		'log_endpoint'          => rcc_consent_log_enabled() ? esc_url_raw( rest_url( 'rcc/v1/consent' ) ) : '',
+		'view_endpoint'         => rcc_count_banner_views_enabled() ? esc_url_raw( rest_url( 'rcc/v1/view' ) ) : '',
 		'consent_mode_defaults' => rcc_consent_mode_defaults(),
 		'texts'                 => $texts,
 		'vendors'               => $vendors,
 		'gsc_verification'      => (string) $s['gsc_verification'],
+		'cookie_declaration'    => rcc_cookie_declaration( $s ),
 		'appearance'            => array(
 			'layout'                   => (string) $s['banner_layout'],
 			'show_backdrop'            => ! empty( $s['show_backdrop'] ),
@@ -113,7 +115,7 @@ function rcc_rest_get_config( WP_REST_Request $request ) {
 	// En tom PHP-array blir [] i JSON. Objekten ska alltid vara {} så att
 	// en typad frontend inte får en lista där den väntar sig ett objekt,
 	// t.ex. "vendors" på en sajt där inga verktyg är ifyllda.
-	foreach ( array( 'cookie', 'consent_mode_defaults', 'texts', 'vendors', 'appearance' ) as $key ) {
+	foreach ( array( 'cookie', 'consent_mode_defaults', 'texts', 'vendors', 'appearance', 'cookie_declaration' ) as $key ) {
 		if ( isset( $config[ $key ] ) && array() === $config[ $key ] ) {
 			$config[ $key ] = new stdClass();
 		}

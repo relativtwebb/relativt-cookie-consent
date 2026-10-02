@@ -40,6 +40,15 @@
 		}
 		activate( initial );
 
+		// Länkar till en flik på samma sida (t.ex. från förhandsvisningen
+		// i Cookiedeklaration till Blockering) byter bara hash.
+		$( window ).on( 'hashchange', function () {
+			var id = ( window.location.hash || '' ).replace( '#rcc-tab-', '' );
+			if ( id ) {
+				activate( id );
+			}
+		} );
+
 		if ( $.fn.wpColorPicker ) {
 			$( '.rcc-color-field' ).wpColorPicker();
 		}
