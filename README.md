@@ -17,6 +17,7 @@ Byggt av [Relativt](https://relativt.se) för våra kundsajter. Fritt att använ
 - Loggar varje samtycke i en egen tabell (samtyckes-ID, tidpunkt, kategorier, land, version) som bevis enligt GDPR art. 7.1, med sökning, filter och CSV-export under Cookie Consent → Samtyckeslogg. Poster gallras automatiskt.
 - Visar statistik över valen och hur ofta rutan visas, på en egen sida och som widget på panelen.
 - Har en samtyckesversion: höj siffran när ni lägger till verktyg eller ändrar texter, så får alla besökare rutan på nytt.
+- Låter andra plugin följa samtycket: `window.rcc` och händelser i JS, `rcc_has_consent()` i PHP, och WP Consent API för plugin som inte känner till det här pluginet. Andra plugin kan registrera sina cookies, som då listas i cookiedeklarationen och raderas när besökaren nekar kategorin (se [Följa samtycket från ett annat plugin](#följa-samtycket-från-ett-annat-plugin)).
 - Kan vara källa för inställningar och logg åt en headless-frontend på en annan domän via `GET /wp-json/rcc/v1/config` (se [Headless](#headless-egen-ruta-på-en-annan-domän)).
 - Hämtar nya versioner från det här repots GitHub Releases och visar dem under Uppdateringar i WP-admin.
 
@@ -100,7 +101,8 @@ Kortkoden `[relativt_cookie_declaration]` visar en tabell per kategori med cooki
 1. Pluginets egen cookie (Nödvändiga).
 2. Kända cookies för varje verktyg som har ett ID ifyllt, med ID:t insatt där cookienamnet innehåller det (`_ga_ABC123`, `_hjSession_123456`). GA4 hamnar under Marknadsföring om "Behandla som marknadsföring" är ikryssat.
 3. YouTube och Vimeo när videoblockeringen är på.
-4. **Egna cookies** under fliken Cookiedeklaration, en per rad: `namn | leverantör | kategori | syfte | lagringstid`. Kategori skrivs som nödvändiga, statistik eller marknadsföring.
+4. Cookies som andra plugin registrerat (se [Registrera en cookie](#registrera-en-cookie)), och cookies som registrerats via WP Consent API.
+5. **Egna cookies** under fliken Cookiedeklaration, en per rad: `namn | leverantör | kategori | syfte | lagringstid`. Kategori skrivs som nödvändiga, statistik eller marknadsföring.
 
 Kortkoden tar `category` (en eller flera, kommaseparerade), `descriptions="nej"` för att dölja kategoribeskrivningarna och `heading` (`h2`–`h5` eller `strong`). Fliken visar en förhandsvisning och påminner om källor pluginet inte känner till (GTM-taggar, egen kod, blockerade domäner).
 
@@ -161,7 +163,7 @@ curl -s https://example.com/wp-json/rcc/v1/config
 
 ```json
 {
-  "plugin_version": "1.3.0",
+  "plugin_version": "1.4.0",
   "cookie": { "name": "relativt_cookie_consent", "expiry_days": 180 },
   "consent_version": 1,
   "log_endpoint": "https://example.com/wp-json/rcc/v1/consent",
@@ -209,7 +211,7 @@ curl -s https://example.com/wp-json/rcc/v1/config
 - Standardvärdena ingår, så svaret är komplett även om ingen sparat inställningarna.
 - `vendors` innehåller bara verktyg med ifyllt ID, och är `{}` när inget är ifyllt. Möjliga nycklar: `ga4`, `google_ads`, `gtm`, `meta_pixel`, `hotjar`, `clarity`, `bing_uet`, `linkedin`, `reddit`, `tiktok`, `pinterest`, `snapchat`. Kategorin är exakt den som pluginet själv blockerar verktyget under (GA4 blir `marketing` när "Behandla som marknadsföring" är ikryssat). `"statistics marketing"` betyder att endera kategorin räcker. GTM har även `mode`: `blocked` = vänta på samtycke, `always` = ladda direkt och låt Consent Mode styra taggarna (se avsnittet om GTM ovan).
 - `log_endpoint` är tom sträng när loggen är avstängd. Skicka då ingenting. Samma sak för `view_endpoint` när räkningen av visningar är avstängd.
-- `cookie_declaration` är samma lista som kortkoden visar (se [Cookiedeklaration](#cookiedeklaration)), för en policysida i frontend. `source` är `plugin`, verktygsnyckeln eller `custom`.
+- `cookie_declaration` är samma lista som kortkoden visar (se [Cookiedeklaration](#cookiedeklaration)), för en policysida i frontend. `source` är `plugin`, verktygsnyckeln, `registered` (andra plugin) eller `custom`.
 - `consent_mode_defaults` går genom filtret `rcc_consent_mode_defaults`, så sajtens anpassning följer med.
 - Texterna är ren text. Rendera dem som text, inte som HTML.
 - Svaret påverkas inte av `?lang` eller liknande: pluginet har ett språk per sajt.
@@ -279,7 +281,7 @@ export interface RccConfig {
   cookie_declaration: Record<'necessary' | Category, Array<{
     category: 'necessary' | Category;
     name: string; provider: string; purpose: string; duration: string;
-    source: string; // 'plugin', verktygsnyckel eller 'custom'
+    source: string; // 'plugin', verktygsnyckel, 'registered' eller 'custom'
   }>>;
   appearance: {
     layout: 'bar' | 'card-left' | 'card-right' | 'center';
@@ -427,6 +429,180 @@ export function loadGa4(config: RccConfig, consent: RccConsent | null): void {
 // else { /* visa rutan; vid val: loadGa4(config, setConsent(config, { statistics, marketing })) */ }
 ```
 
+## Följa samtycket från ett annat plugin
+
+Andra plugin och teman, t.ex. Relativt Formulär, ska kunna följa besökarens val utan att gissa. Det finns två vägar:
+
+| Pluginet | Använd |
+| --- | --- |
+| Byggt för sajter med Relativt Cookie Consent | `window.rcc` och händelserna i JS, `rcc_has_consent()` i PHP. Ger samtyckes-ID och exakt samma svar som rutan. |
+| Ska fungera med vilken cookie-lösning som helst | [WP Consent API](#wp-consent-api). Kräver att pluginet WP Consent API är installerat. |
+
+Läs aldrig samtyckescookien själv. Den gäller bara om dess samtyckesversion är sajtens nuvarande, och efter en höjd version säger en gammal cookie fortfarande "ja". `window.rcc.getConsent()` och `rcc_has_consent()` gör den kontrollen.
+
+### Finns pluginet på sajten?
+
+Avgör det i PHP och skicka beskedet till ert skript:
+
+```php
+$config = array(
+	'rcc' => function_exists( 'rcc_has_consent' ), // 1.4.0 eller senare
+);
+wp_localize_script( 'mitt-skript', 'mittPlugin', $config );
+```
+
+I JS går det inte att avgöra med `window.rcc`, eftersom ert skript kan köras före pluginets.
+
+### JavaScript
+
+Skriptordningen är inte garanterad: ert skript kan ligga i `<head>`, laddas med `async`, eller hamna före eller efter pluginets skript i footern. Använd därför det här mönstret, som fungerar i alla lägen:
+
+```js
+( function () {
+	function apply( consent ) {
+		// consent är { necessary, statistics, marketing, … } eller null (inget giltigt val).
+		if ( consent && consent.statistics ) {
+			// Sätt er cookie, starta mätningen.
+		} else {
+			// Ta bort er cookie, mät inte.
+		}
+	}
+
+	function start( rcc ) {
+		apply( rcc.getConsent() );
+		document.addEventListener( 'rcc_consent_updated', function ( e ) {
+			apply( e.detail );
+		} );
+	}
+
+	if ( window.rcc ) {
+		start( window.rcc ); // Pluginets skript har redan körts.
+	} else {
+		document.addEventListener( 'rcc_ready', function () {
+			start( window.rcc );
+		}, { once: true } );
+	}
+} )();
+```
+
+Tills `rcc_ready` kommit: behandla det som att besökaren inte samtyckt. Det kan dröja om sajten har en optimering som skjuter upp JavaScript tills besökaren rör sidan (WP Rocket "Delay JavaScript execution", Perfmatters, LiteSpeed m.fl.). Undanta `relativt-cookie-consent.js` från sådan fördröjning, annars visas rutan också sent.
+
+Ett alternativ är att ange pluginets skript som beroende: `wp_enqueue_script( 'mitt-skript', $url, array( 'rcc-script' ), … )`. Gör det bara när pluginet är aktivt och från `wp_enqueue_scripts` med prioritet högre än 10. WordPress skriver inte ut ett skript vars beroende saknas, så ert skript försvinner om cookie-pluginet avaktiveras.
+
+**Händelser** (alla på `document`):
+
+| Händelse | När | `detail` |
+| --- | --- | --- |
+| `rcc_ready` | En gång per sidvisning, så fort pluginets skript körts (före `DOMContentLoaded`). `window.rcc` finns då. | `getConsent()`: `{ necessary, statistics, marketing }` eller `null`. |
+| `rcc_consent_updated` | Varje gång besökaren gör ett val: Acceptera alla, Avvisa alla, Spara val, "Visa innehåll" på en blockerad video, eller anrop till `rcc.acceptAll()`, `rcc.rejectAll()` och `rcc.save()`. Även när valet är detsamma som förut. Skickas efter att cookien skrivits, blockerade skript köats och nekade registrerade cookies raderats. **Inte** vid sidladdning; läs då `getConsent()`. Är "Ladda om sidan när samtycke dras tillbaka" påslaget skickas händelsen före omladdningen. | Samtyckesobjektet: `{ necessary, statistics, marketing, id, version, timestamp }`. |
+| `wp_listen_for_consent_change` | När en kategori i WP Consent API ändras (bara med det pluginet). | T.ex. `{ marketing: 'deny' }`. |
+| `wp_consent_type_defined` | En gång, när pluginets skript körs (bara med WP Consent API). | – |
+
+För Google Tag Manager pushas dessutom `{ event: 'rcc_consent_update', rcc_statistics, rcc_marketing }` till `dataLayer` vid varje val och vid varje sidladdning med giltigt samtycke.
+
+### PHP
+
+```php
+if ( function_exists( 'rcc_has_consent' ) && rcc_has_consent( 'marketing' ) ) {
+	// Besökaren har godkänt marknadsföring för sajtens nuvarande samtyckesversion.
+}
+
+// Hela samtycket, t.ex. för att spara samtyckes-ID:t med ett formulärinskick.
+$consent = function_exists( 'rcc_get_consent' ) ? rcc_get_consent() : null;
+// array( 'necessary' => true, 'statistics' => bool, 'marketing' => bool,
+//        'id' => '…', 'version' => 1, 'timestamp' => '…' ) eller null
+```
+
+- `rcc_has_consent( 'necessary' )` är alltid `true`. `statistics` och `marketing` är `true` bara när besökaren uttryckligen godkänt kategorin. Svenska namn (`'statistik'`, `'marknadsföring'`) fungerar också. Okända kategorier ger `false`.
+- Cookien tolkas exakt som pluginets JS gör: den måste vara giltig JSON och ha sajtens samtyckesversion (saknad version räknas som 1), och en kategori räknas som godkänd när värdet är sant i JavaScript-mening. Pluginet skriver alltid `true`/`false`.
+- **Sidcache.** En cachad sida byggs en gång och visas för alla, så ett PHP-beslut i sidans HTML följer inte besökaren. Använd PHP för förfrågningar som inte cachas (formulärinskick, AJAX, REST) och JS för allt som syns på sidan.
+- Filtret `rcc_has_consent` ändrar svaret (args: `$has`, `$category`, `$consent`).
+
+### Registrera en cookie
+
+Plugin som sätter cookies registrerar dem med filtret `rcc_registered_cookies`. Registrerade cookies listas i cookiedeklarationen och raderas när besökaren nekar eller drar tillbaka kategorin.
+
+```php
+add_filter( 'rcc_registered_cookies', function ( $cookies ) {
+	$cookies[] = array(
+		'name'     => 'xf_src',
+		'category' => 'statistics marketing', // endera räcker
+		'provider' => 'Relativt Formulär',
+		'purpose'  => 'Sparar vilken kampanj besökaren kom från, så att förfrågan kan kopplas till den.',
+		'duration' => '90 dagar',
+	);
+	return $cookies;
+} );
+```
+
+Filtret går att lägga till även när cookie-pluginet saknas: då anropas det aldrig.
+
+| Fält | |
+| --- | --- |
+| `name` | Cookiens namn. `*` betyder valfria tecken: `mitt_plugin_*`. Ett mönster med `*` måste ha minst tre andra tecken. |
+| `category` | `necessary`, `statistics` eller `marketing` (eller de svenska namnen). Flera, med mellanslag eller som array, betyder att endera kategorin räcker; cookien listas då under var och en. |
+| `provider`, `purpose`, `duration` | Text i deklarationen: leverantör, syfte och lagringstid. |
+| `declare` | Valfritt. `false` = används bara för städningen, listas inte. |
+| `plugin` | Valfritt. Ert plugins namn, visas i admin under fliken Cookiedeklaration. |
+
+Poster med ogiltigt namn eller okänd kategori hoppas över. De visas som varning under fliken Cookiedeklaration, och som `_doing_it_wrong` på admin-sidor när `WP_DEBUG` är på.
+
+**Städningen:**
+
+- Vid ett val raderar JS direkt de registrerade cookies vars kategori nekats. Vid varje sidladdning med ett giltigt samtycke raderas sådana cookies igen, om ett skript som redan körde hann sätta dem på nytt.
+- HttpOnly-cookies syns inte för JS. De raderas av PHP vid nästa sidvisning som når WordPress (`send_headers`; en sida som serveras direkt ur en helsidescache når inte PHP). Svaret skickas då med `no-cache` och `DONOTCACHEPAGE`, så att raderingen inte cachas.
+- Bara förstapartscookies kan raderas, alltså cookies på sajtens egen domän. Cookies som `IDE` (doubleclick.net) eller `fr` (facebook.com) går inte att nå från sajten.
+- En cookie behålls om minst en registrering som matchar den har en godkänd kategori eller är nödvändig.
+- Ingen radering innan besökaren valt, eller när samtycket gäller en äldre version: då har ingen kategori nekats, och skripten är ändå blockerade.
+- Rörs aldrig: pluginets egen cookie, WP Consent API:s cookies och WordPress egna (`wordpress_*`, `wp-settings-*`, `wp_lang`, `comment_author_*`, `wp-postpass_*`) samt `PHPSESSID`. Fler läggs till med filtret `rcc_protected_cookies`.
+
+Registret innehåller redan cookies från verktyg som pluginet själv laddar: `_ga` och `_ga_*` (GA4, med GA4:s kategori), `_gcl_*` (Google Ads) samt `_fbp` och `_fbc` (Meta). De städas även när verktyget laddas via GTM eller egen kod, men listas i deklarationen bara när verktyget har ett ID ifyllt, som förut.
+
+Registret är ett skyddsnät, inte en spärr. Ert plugin ska fortfarande inte sätta en cookie innan besökaren samtyckt.
+
+### WP Consent API
+
+[WP Consent API](https://wordpress.org/plugins/wp-consent-api/) är ett gemensamt gränssnitt som bland annat WooCommerce och Site Kit läser. När det pluginet är aktivt blir Relativt Cookie Consent leverantör av samtycket, utan inställningar:
+
+- Samtyckestypen sätts till `optin`, både i PHP (`wp_get_consent_type`) och i JS (`window.wp_consent_type` och händelsen `wp_consent_type_defined`).
+- Vid varje val, och vid varje sidladdning, sätter pluginet API:ts kategorier med `wp_set_consent()`. API:t skickar `wp_listen_for_consent_change` när en kategori ändras. Pluginets skript laddas efter API:ts, som API:t kräver.
+- `wp_has_consent()` i PHP svarar utifrån pluginets egen, versionskollade cookie. Efter en höjd samtyckesversion ger API:t alltså `false` direkt, och i JS sätts kategorierna till `deny` vid nästa sidladdning.
+- API:ts cookies (`wp_consent_*`) får samma livslängd som samtycket och listas under Nödvändiga i cookiedeklarationen.
+- Cookies som andra plugin registrerat med `wp_add_cookie_info()` tas med i deklarationen och städningen, med kategorin översatt enligt tabellen nedan. Platshållare som `_ga_{ID}` blir mönstret `_ga_*`. Administratörscookies och localStorage hoppas över.
+- Pluginet anmäler sig som följsamt till API:t, så att det syns under Webbplatshälsa.
+
+Kategorierna översätts så här:
+
+| WP Consent API | Relativt Cookie Consent |
+| --- | --- |
+| `functional` | Nödvändiga (alltid tillåtet) |
+| `statistics`, `statistics-anonymous` | Statistik |
+| `marketing` | Marknadsföring |
+| `preferences` | Marknadsföring, som `personalization_storage` i Consent Mode |
+
+Ett plugin som bara känner till API:t följer då samtycket så här:
+
+```php
+if ( function_exists( 'wp_has_consent' ) && wp_has_consent( 'statistics' ) ) { … }
+```
+
+```js
+document.addEventListener( 'wp_listen_for_consent_change', function ( e ) {
+	if ( e.detail.marketing === 'allow' ) { … }
+} );
+```
+
+Har sajten bara inställningscookies som besökaren själv bett om (t.ex. språkval) kan `preferences` räknas som nödvändig:
+
+```php
+add_filter( 'rcc_wp_consent_categories', function ( $map ) {
+	$map['preferences'] = 'necessary';
+	return $map;
+} );
+```
+
+Integrationen stängs av med `add_filter( 'rcc_wp_consent_api', '__return_false' );` och importen av `wp_add_cookie_info()` med `rcc_import_wp_consent_cookie_info`.
+
 ## För utvecklare
 
 ### Egna blockerade skript
@@ -454,10 +630,15 @@ window.rcc.rejectAll();
 window.rcc.save( { statistics: true, marketing: false } );
 window.rcc.refreshIframes();      // om ni själva lägger in blockerade iframes efter sidladdning
 
+document.addEventListener( 'rcc_ready', function ( e ) {
+	console.log( e.detail ); // samtycket eller null, en gång per sidvisning
+} );
 document.addEventListener( 'rcc_consent_updated', function ( e ) {
-	console.log( e.detail ); // samtyckesobjektet
+	console.log( e.detail ); // samtyckesobjektet, vid varje val
 } );
 ```
+
+Se [Följa samtycket från ett annat plugin](#följa-samtycket-från-ett-annat-plugin) för hur skriptordningen hanteras.
 
 ### Filter och actions
 
@@ -474,6 +655,15 @@ document.addEventListener( 'rcc_consent_updated', function ( e ) {
 | `rcc_filter_output_on_request` | filter | Returnera false för att hoppa över all bearbetning av HTML:en (video och domäner) på en viss förfrågan. |
 | `rcc_vendor_cookies` | filter | Kända cookies per verktyg i cookiedeklarationen. |
 | `rcc_cookie_declaration` | filter | Hela cookiedeklarationen (args: `$declaration`, `$settings`). |
+| `rcc_registered_cookies` | filter | Kakregistret: registrera ert plugins cookies (args: `$cookies`, `$settings`). |
+| `rcc_protected_cookies` | filter | Cookies som städningen aldrig får radera. Namn eller mönster med `*`. |
+| `rcc_cleanup_cookies_on_request` | filter | Returnera false för att stänga av städningen i PHP. |
+| `rcc_cookies_deleted` | action | Körs efter att PHP raderat nekade cookies (namn, samtycke). |
+| `rcc_has_consent` | filter | Svaret från `rcc_has_consent()` (args: `$has`, `$category`, `$consent`). |
+| `rcc_get_consent` | filter | Det tolkade samtycket från `rcc_get_consent()`. |
+| `rcc_wp_consent_api` | filter | Returnera false för att stänga av integrationen med WP Consent API. |
+| `rcc_wp_consent_categories` | filter | Hur WP Consent API:s kategorier översätts till pluginets. |
+| `rcc_import_wp_consent_cookie_info` | filter | Returnera false för att inte ta med cookies från `wp_add_cookie_info()`. |
 | `rcc_count_banner_views` | filter | Returnera false för att sluta räkna visningar av rutan. |
 | `rcc_dashboard_widget` | filter | Returnera false för att dölja statistikwidgeten på panelen. |
 | `rcc_scanner_urls` | filter | Sidorna skannern hämtar (högst 15). |
@@ -561,6 +751,9 @@ includes/vendors.php               Skripten för varje verktyg, HTML-block för 
 includes/frontend.php              Banner, video-värdar, kortkod, tillgångar
 includes/script-blocking.php       Output-bufferten: video-gating och domänblockering
 includes/cookie-declaration.php    Cookiedeklarationen och kortkoden
+includes/consent.php               rcc_has_consent() och rcc_get_consent() för andra plugin
+includes/cookie-registry.php       Kakregistret och städningen av nekade cookies
+includes/wp-consent-api.php        Integrationen med WP Consent API
 includes/consent-log.php           Tabeller, REST-endpoint för loggen, gallring (cron)
 includes/stats.php                 Visningsräknaren (REST) och sammanställningar
 includes/scanner.php               Skannerns analys, hämtning och AJAX

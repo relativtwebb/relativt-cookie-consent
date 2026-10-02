@@ -2,12 +2,14 @@
 /**
  * Cookiedeklaration: vilka cookies sajten sätter, per kategori.
  *
- * Listan byggs av tre källor och är därför alltid i synk med
+ * Listan byggs av fyra källor och är därför alltid i synk med
  * inställningarna:
  *   1. Pluginets egen samtyckescookie (Nödvändiga).
  *   2. Kända cookies för varje verktyg som har ett ID ifyllt, och för
  *      YouTube/Vimeo när video-gatingen är på.
- *   3. Egna cookies som admin skrivit in (verktyg via "Egen kod",
+ *   3. Cookies som andra plugin registrerat i kakregistret
+ *      (cookie-registry.php), inklusive WP Consent API.
+ *   4. Egna cookies som admin skrivit in (verktyg via "Egen kod",
  *      domänblockering, temat m.m.).
  *
  * Visas med kortkoden [relativt_cookie_declaration] och ingår i
@@ -187,7 +189,7 @@ function rcc_format_days( $days ) {
 /**
  * Hela deklarationen: array( 'necessary' => rader, 'statistics' => …,
  * 'marketing' => … ). Varje rad: name, provider, purpose, duration,
- * category, source (plugin/vendor-nyckel/custom).
+ * category, source (plugin/vendor-nyckel/registered/custom).
  */
 function rcc_cookie_declaration( $s = null ) {
 	$s   = $s ? $s : rcc_get_settings();
@@ -240,6 +242,24 @@ function rcc_cookie_declaration( $s = null ) {
 				'purpose'  => $row[2],
 				'duration' => $row[3],
 				'source'   => $vendor,
+			);
+		}
+	}
+
+	// Cookies som andra plugin registrerat (rcc_registered_cookies). En post
+	// med flera kategorier ("statistics marketing") listas under var och en.
+	foreach ( rcc_registered_cookies( $s ) as $entry ) {
+		if ( ! $entry['declare'] ) {
+			continue;
+		}
+		foreach ( $entry['categories'] as $category ) {
+			$out[ $category ][] = array(
+				'category' => $category,
+				'name'     => $entry['name'],
+				'provider' => $entry['provider'],
+				'purpose'  => $entry['purpose'],
+				'duration' => $entry['duration'],
+				'source'   => 'registered',
 			);
 		}
 	}

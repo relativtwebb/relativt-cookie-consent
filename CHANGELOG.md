@@ -8,6 +8,40 @@ Texten under en versionsrubrik används som release-text på GitHub och visas
 under "Visa detaljer" i WP-admin på sajterna som kör pluginet, så skriv för
 den som ska uppdatera.
 
+## [1.4.0] - 2026-10-02
+
+Gör det lätt och säkert för andra plugin (t.ex. Relativt Formulär) att
+följa besökarens samtycke, och ser till att deras cookies deklareras och
+städas bort. Inga besökare behöver samtycka om, och inga inställningar
+behöver ändras. Rutan, cookien, verktygen och det befintliga JS-API:t
+fungerar som i 1.3.0.
+
+- **Kakregister:** andra plugin registrerar sina cookies med filtret
+  `rcc_registered_cookies` (namn, kategori, syfte, lagringstid,
+  leverantör; `*` i namnet för valfria tecken). Registrerade cookies listas
+  i cookiedeklarationen och raderas när besökaren nekar eller drar tillbaka
+  kategorin: direkt vid valet, vid varje sidladdning där de ändå finns
+  kvar, och i PHP för HttpOnly-cookies. Pluginets egen cookie, WordPress
+  cookies och WP Consent API:s cookies rörs aldrig.
+- **Städning av kända cookies:** `_ga`, `_ga_*`, `_gcl_*`, `_fbp` och
+  `_fbc` raderas när statistik respektive marknadsföring nekas, även när
+  verktyget laddas via Google Tag Manager. Deklarationen listar dem som
+  förut, bara när verktyget har ett ID ifyllt.
+- **PHP:** `rcc_has_consent( 'statistics' )` och `rcc_get_consent()`
+  läser och validerar samtyckescookien, inklusive samtyckesversionen, så
+  att PHP och JS alltid ger samma svar.
+- **JS:** ny händelse `rcc_ready` när `window.rcc` finns, så att andra
+  plugin kan läsa samtycket oavsett i vilken ordning skripten laddas.
+- **WP Consent API:** när det pluginet är aktivt blir Relativt Cookie
+  Consent leverantör av samtycket. Plugin som läser API:t, t.ex.
+  WooCommerce, följer då valet i rutan utan att känna till det här
+  pluginet. `wp_has_consent()` svarar utifrån pluginets versionskollade
+  cookie. På sajter med WP Consent API tillkommer API:ts cookies
+  (`wp_consent_*`) under Nödvändiga i cookiedeklarationen.
+- **Dokumentation:** nytt avsnitt i README om hur andra plugin följer
+  samtycket i JS och PHP, vilka händelser som skickas och när, hur man
+  registrerar en cookie och hur man hanterar skriptordningen.
+
 ## [1.3.0] - 2026-10-02
 
 Egen meny i WP-admin, statistik, cookiedeklaration, skriptskanner och

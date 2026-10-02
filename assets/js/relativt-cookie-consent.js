@@ -11,8 +11,16 @@
  * varje automatisk visning av rutan räknas till statistiken.
  *
  * Publikt API: window.rcc (se längst ner).
- * Event: "rcc_consent_updated" på document (detail = samtyckesobjektet)
- * samt dataLayer-eventet "rcc_consent_update" för Google Tag Manager.
+ * Events på document:
+ *   "rcc_ready"           en gång, direkt när window.rcc finns
+ *                         (detail = getConsent(), dvs. samtycket eller null).
+ *   "rcc_consent_updated" vid varje val (detail = samtyckesobjektet).
+ * Dessutom dataLayer-eventet "rcc_consent_update" för Google Tag Manager,
+ * och WP Consent API:s "wp_listen_for_consent_change" när det pluginet
+ * är aktivt.
+ *
+ * Registrerade cookies (kakregistret) i en nekad kategori raderas vid
+ * valet och vid varje sidladdning.
  */
 ( function () {
 	'use strict';
@@ -27,6 +35,9 @@
 	var VIEW_ENDPOINT = settings.viewEndpoint || '';
 	var i18n = settings.i18n || {};
 	var CATEGORIES = [ 'statistics', 'marketing' ];
+	var REGISTRY = Array.isArray( settings.cookieRegistry ) ? settings.cookieRegistry : [];
+	var PROTECTED = Array.isArray( settings.protectedCookies ) ? settings.protectedCookies : [];
+	var WP_CONSENT = ( settings.wpConsentApi && 'object' === typeof settings.wpConsentApi ) ? settings.wpConsentApi : null;
 
 	var banner, backdrop, categoriesEl, toggleBtn, saveBtn, rejectBtn, acceptBtn, reopenBtn, statsInput, marketingInput, metaEl, metaIdEl, metaDateEl;
 	var lastFocused = null;
@@ -125,6 +136,8 @@
 
 		applyConsent( consent );
 		activateGatedIframes( consent );
+		cleanupCookies( consent );
+		syncWpConsentApi( consent );
 
 		document.dispatchEvent(
 			new CustomEvent( 'rcc_consent_updated', { detail: consent } )
@@ -598,6 +611,184 @@
 	}
 
 	/* ---------------------------------------------------------------
+	 * Kakregister: städning av nekade cookies
+	 * ------------------------------------------------------------ */
+
+	function patternToRegExp( pattern ) {
+		return new RegExp( '^' + String( pattern ).split( '*' ).map( function ( part ) {
+			return part.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' );
+		} ).join( '.*' ) + '$' );
+	}
+
+	var registryRules = REGISTRY.filter( function ( entry ) {
+		return entry && 'string' === typeof entry.name && Array.isArray( entry.categories );
+	} ).map( function ( entry ) {
+		return { re: patternToRegExp( entry.name ), categories: entry.categories };
+	} );
+	var protectedRules = PROTECTED.filter( function ( p ) {
+		return 'string' === typeof p && '' !== p;
+	} ).map( patternToRegExp );
+
+	function cookieNames() {
+		var names = [];
+		( document.cookie ? document.cookie.split( ';' ) : [] ).forEach( function ( pair ) {
+			var name = pair.split( '=' )[ 0 ].replace( /^\s+|\s+$/g, '' );
+			if ( name && names.indexOf( name ) === -1 ) {
+				names.push( name );
+			}
+		} );
+		return names;
+	}
+
+	/**
+	 * Raderas när cookien matchar minst en registrerad post och ingen av
+	 * de matchande posterna har en godkänd eller nödvändig kategori.
+	 * Skyddade cookies (pluginets egen, WordPress, WP Consent API) rörs
+	 * aldrig. Samma regel som rcc_cookies_to_delete() i PHP.
+	 */
+	function shouldDelete( name, consent ) {
+		var i;
+		for ( i = 0; i < protectedRules.length; i++ ) {
+			if ( protectedRules[ i ].test( name ) ) {
+				return false;
+			}
+		}
+		var matched = false;
+		for ( i = 0; i < registryRules.length; i++ ) {
+			var rule = registryRules[ i ];
+			if ( ! rule.re.test( name ) ) {
+				continue;
+			}
+			matched = true;
+			var allowed = rule.categories.some( function ( cat ) {
+				return 'necessary' === cat || !! consent[ cat ];
+			} );
+			if ( allowed ) {
+				return false;
+			}
+		}
+		return matched;
+	}
+
+	/**
+	 * JS ser inte vilken domän eller sökväg en cookie satts på, så den
+	 * raderas på alla som är möjliga: utan domän och på värden och varje
+	 * överordnad domän, med sökvägen / och sidans egna sökvägar.
+	 */
+	function deleteCookie( name ) {
+		var host = window.location.hostname;
+		var domains = [ '' ];
+		if ( host.indexOf( '.' ) !== -1 && ! /^[\d.]+$/.test( host ) && host.indexOf( ':' ) === -1 ) {
+			var parts = host.split( '.' );
+			for ( var i = 0; i < parts.length - 1; i++ ) {
+				domains.push( '.' + parts.slice( i ).join( '.' ) );
+			}
+		}
+		var paths = [ '/' ];
+		var segments = window.location.pathname.split( '/' ).filter( Boolean );
+		var path = '';
+		segments.forEach( function ( seg ) {
+			path += '/' + seg;
+			paths.push( path, path + '/' );
+		} );
+		var secure = 'https:' === window.location.protocol ? ';Secure' : '';
+		domains.forEach( function ( domain ) {
+			paths.forEach( function ( p ) {
+				document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;max-age=0;path=' + p + ( domain ? ';domain=' + domain : '' ) + secure;
+			} );
+		} );
+	}
+
+	/**
+	 * Raderar registrerade cookies i nekade kategorier. Körs bara med ett
+	 * gällande samtycke: innan besökaren valt (eller när versionen är
+	 * inaktuell) har ingen kategori nekats, och skripten är ändå blockerade.
+	 */
+	function cleanupCookies( consent ) {
+		if ( ! consent || ! registryRules.length || ( consent.statistics && consent.marketing ) ) {
+			return [];
+		}
+		var deleted = [];
+		cookieNames().forEach( function ( name ) {
+			if ( shouldDelete( name, consent ) ) {
+				deleteCookie( name );
+				deleted.push( name );
+			}
+		} );
+		return deleted;
+	}
+
+	/* ---------------------------------------------------------------
+	 * WP Consent API
+	 * ------------------------------------------------------------ */
+
+	/**
+	 * Talar om för WP Consent API att samtycke krävs innan något sätts.
+	 * Görs direkt när skriptet körs, så att plugin som väntar på
+	 * wp_consent_type_defined får beskedet så tidigt som möjligt.
+	 */
+	function defineWpConsentType() {
+		if ( ! WP_CONSENT ) {
+			return;
+		}
+		window.wp_consent_type = WP_CONSENT.type || 'optin';
+		document.dispatchEvent( new CustomEvent( 'wp_consent_type_defined' ) );
+	}
+
+	function wpConsentCookie( category ) {
+		var prefix = ( window.consent_api && window.consent_api.cookie_prefix ) || 'wp_consent';
+		var name = prefix + '_' + category + '=';
+		var parts = document.cookie ? document.cookie.split( ';' ) : [];
+		for ( var i = 0; i < parts.length; i++ ) {
+			var c = parts[ i ].replace( /^\s+/, '' );
+			if ( c.indexOf( name ) === 0 ) {
+				return c.substring( name.length );
+			}
+		}
+		return '';
+	}
+
+	/**
+	 * Sätter WP Consent API:s kategorier utifrån samtycket. wp_set_consent
+	 * skickar wp_listen_for_consent_change bara när ett värde ändras.
+	 *
+	 * Utan gällande samtycke sätts bara "functional" (nödvändiga). Står en
+	 * annan kategori kvar som "allow" från ett samtycke till en äldre
+	 * version sätts den till "deny", så att andra plugin slutar spåra.
+	 */
+	var wpConsentRetry = false;
+
+	function syncWpConsentApi( consent ) {
+		if ( ! WP_CONSENT ) {
+			return;
+		}
+		if ( 'function' !== typeof window.wp_set_consent ) {
+			// API:ts skript ska laddas före pluginets. Har en optimering
+			// ändrat ordningen görs ett nytt försök när sidan laddat klart.
+			if ( ! wpConsentRetry ) {
+				wpConsentRetry = true;
+				window.addEventListener( 'load', function () {
+					if ( 'function' === typeof window.wp_set_consent ) {
+						syncWpConsentApi( currentConsent() );
+					}
+				} );
+			}
+			return;
+		}
+		var map = WP_CONSENT.categories || {};
+		Object.keys( map ).forEach( function ( apiCategory ) {
+			var ours = map[ apiCategory ];
+			if ( 'necessary' === ours ) {
+				window.wp_set_consent( apiCategory, 'allow' );
+			} else if ( consent ) {
+				window.wp_set_consent( apiCategory, consent[ ours ] ? 'allow' : 'deny' );
+			} else if ( 'allow' === wpConsentCookie( apiCategory ) ) {
+				window.wp_set_consent( apiCategory, 'deny' );
+			}
+		} );
+	}
+
+	/* ---------------------------------------------------------------
 	 * Banner-UI
 	 * ------------------------------------------------------------ */
 
@@ -796,6 +987,16 @@
 			activateGatedIframes( currentConsent() );
 		}
 	};
+
+	// Körs direkt, före DOMContentLoaded: WP Consent API och städningen
+	// behöver bara cookies, och andra plugin ska få rätt besked tidigt.
+	( function boot() {
+		var existing = currentConsent();
+		defineWpConsentType();
+		syncWpConsentApi( existing );
+		cleanupCookies( existing );
+		document.dispatchEvent( new CustomEvent( 'rcc_ready', { detail: window.rcc.getConsent() } ) );
+	} )();
 
 	if ( 'loading' === document.readyState ) {
 		document.addEventListener( 'DOMContentLoaded', init );

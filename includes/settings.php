@@ -543,7 +543,7 @@ function rcc_render_settings_page() {
 
 			<div class="rcc-tab-panel" id="rcc-tab-cookies" hidden>
 				<h2 class="title">Cookiedeklaration</h2>
-				<p>Listan över sajtens cookies byggs automatiskt av de verktyg som har ett ID ifyllt, YouTube och Vimeo när videoblockeringen är på, och pluginets egen cookie. Visa den på integritetspolicyn med kortkoden <code>[relativt_cookie_declaration]</code>. Vill du bara visa en kategori: <code>[relativt_cookie_declaration category="marknadsföring"]</code>.</p>
+				<p>Listan över sajtens cookies byggs automatiskt av de verktyg som har ett ID ifyllt, YouTube och Vimeo när videoblockeringen är på, cookies som andra tillägg registrerat, och pluginets egen cookie. Visa den på integritetspolicyn med kortkoden <code>[relativt_cookie_declaration]</code>. Vill du bara visa en kategori: <code>[relativt_cookie_declaration category="marknadsföring"]</code>.</p>
 				<table class="form-table" role="presentation">
 					<?php
 					rcc_field_textarea( $s, 'custom_cookies', 'Egna cookies', array(
@@ -562,6 +562,36 @@ function rcc_render_settings_page() {
 							<li><code><?php echo esc_html( $error ); ?></code></li>
 						<?php endforeach; ?>
 					</ul></div>
+				<?php endif; ?>
+				<?php
+				$registered = array_filter( rcc_registered_cookies( $s ), function ( $entry ) {
+					return $entry['declare'] && 0 !== strpos( $entry['plugin'], 'Relativt Cookie Consent' );
+				} );
+				if ( $registered ) :
+					$cat_labels = array(
+						'necessary'  => $s['necessary_label'],
+						'statistics' => $s['statistics_label'],
+						'marketing'  => $s['marketing_label'],
+					);
+					?>
+					<div class="notice notice-info inline"><p>Andra tillägg har registrerat de här cookiesarna. De ingår i listan, och de som inte är nödvändiga raderas när besökaren nekar kategorin:</p><ul>
+						<?php foreach ( $registered as $entry ) : ?>
+							<li><code><?php echo esc_html( $entry['name'] ); ?></code> – <?php echo esc_html( implode( ' eller ', array_map( function ( $cat ) use ( $cat_labels ) {
+								return $cat_labels[ $cat ];
+							}, $entry['categories'] ) ) ); ?><?php echo $entry['plugin'] ? ' (' . esc_html( $entry['plugin'] ) . ')' : ''; ?></li>
+						<?php endforeach; ?>
+					</ul></div>
+				<?php endif; ?>
+				<?php $registry_errors = rcc_registry_error(); ?>
+				<?php if ( $registry_errors ) : ?>
+					<div class="notice notice-warning inline"><p>Ett tillägg har registrerat cookies som inte kunde läsas (ogiltigt namn eller okänd kategori) och därför varken listas eller städas:</p><ul>
+						<?php foreach ( $registry_errors as $error ) : ?>
+							<li><code><?php echo esc_html( $error ); ?></code></li>
+						<?php endforeach; ?>
+					</ul></div>
+				<?php endif; ?>
+				<?php if ( rcc_wp_consent_api_active() ) : ?>
+					<div class="notice notice-info inline"><p>WP Consent API är aktivt. Tillägg som läser det (t.ex. WooCommerce och Site Kit) följer besökarens val i den här rutan.</p></div>
 				<?php endif; ?>
 				<?php
 				$gtm_note     = ! empty( $s['gtm_container_id'] );

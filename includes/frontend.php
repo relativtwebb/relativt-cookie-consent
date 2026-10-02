@@ -82,6 +82,9 @@ function rcc_enqueue_assets() {
 		'logEndpoint'      => rcc_consent_log_enabled() ? esc_url_raw( rest_url( 'rcc/v1/consent' ) ) : '',
 		'viewEndpoint'     => rcc_count_banner_views_enabled() ? esc_url_raw( rest_url( 'rcc/v1/view' ) ) : '',
 		'reloadOnRevoke'   => ! empty( $s['reload_on_revoke'] ),
+		'cookieRegistry'   => rcc_cookie_registry_for_js( $s ),
+		'protectedCookies' => rcc_protected_cookies(),
+		'wpConsentApi'     => rcc_wp_consent_api_js_config(),
 		'backdrop'         => ( ! empty( $s['show_backdrop'] ) || 'center' === $s['banner_layout'] ),
 		'i18n'             => array(
 			'statistics'      => $s['statistics_label'],

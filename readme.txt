@@ -4,7 +4,7 @@ Tags: cookies, consent, gdpr, google analytics, google tag manager, meta pixel
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -28,6 +28,8 @@ Varje samtycke loggas (samtyckes-ID, tidpunkt, kategorier, land, version) som be
 
 Kortkoden [relativt_cookie_declaration] visar en cookiedeklaration byggd av de verktyg som är på. En samtyckesversion gör att alla besökare tillfrågas på nytt när ni lägger till verktyg eller ändrar texter.
 
+Andra tillägg kan följa samtycket via window.rcc och rcc_has_consent(), eller via WP Consent API, och registrera sina cookies så att de listas i deklarationen och raderas när besökaren nekar.
+
 Utseendet (layout, färger, radie, typsnitt) och alla texter ställs in per sajt. Nya versioner hämtas från GitHub och installeras via Uppdateringar i WP-admin.
 
 Pluginet skriver inte om er integritetspolicy. Se till att policyn listar de verktyg ni faktiskt använder.
@@ -47,13 +49,21 @@ Använd kortkoden `[relativt_cookie_settings text="Cookie-inställningar"]` elle
 
 = Vad händer när en besökare tar bort ett samtycke? =
 
-Redan laddade skript kan inte "avladdas", men inga nya anrop görs. Under Allmänt kan du välja att sidan laddas om automatiskt när ett samtycke tas bort.
+Redan laddade skript kan inte "avladdas", men inga nya anrop görs. Kända förstapartscookies (t.ex. _ga, _fbp) och cookies som andra tillägg registrerat raderas direkt. Under Allmänt kan du välja att sidan laddas om automatiskt när ett samtycke tas bort.
 
 = Repot är privat, hur får sajten uppdateringar? =
 
 Lägg `define( 'RCC_GITHUB_TOKEN', 'github_pat_...' );` i wp-config.php. En fine-grained token med läsrättighet till Contents räcker.
 
 == Changelog ==
+
+= 1.4.0 =
+* Kakregister: andra tillägg registrerar sina cookies med filtret rcc_registered_cookies. De listas i cookiedeklarationen och raderas när besökaren nekar kategorin.
+* _ga, _ga_*, _gcl_*, _fbp och _fbc raderas när statistik respektive marknadsföring nekas.
+* PHP-hjälparna rcc_has_consent() och rcc_get_consent(), med kontroll av samtyckesversionen.
+* Ny JS-händelse rcc_ready, för tillägg som laddas före pluginets skript.
+* Integration med WP Consent API: tillägg som läser API:t följer valet i rutan.
+* Inga ändringar för besökarna, och inga nya inställningar.
 
 = 1.3.0 =
 * Rättat: egen kod med flera skript-taggar kunde köras utan samtycke. Koden körs nu först vid samtycke och i tur och ordning.

@@ -3,7 +3,7 @@
  * Plugin Name:       Relativt Cookie Consent
  * Plugin URI:        https://github.com/relativtwebb/relativt-cookie-consent
  * Description:       Lättviktig GDPR-anpassad cookie-ruta med samtyckeslogg, statistik, cookiedeklaration och skriptskanner. Blockerar Google Analytics, Google Ads, Google Tag Manager, Meta-pixeln, TikTok, Pinterest, Snapchat, LinkedIn, Reddit, Hotjar, Microsoft Clarity, Bing UET, egen kod, valfria domäner samt YouTube-/Vimeo-inbäddningar tills besökaren samtyckt.
- * Version:           1.3.0
+ * Version:           1.4.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Relativt
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Direkt åtkomst inte tillåten.
 }
 
-define( 'RCC_VERSION', '1.3.0' );
+define( 'RCC_VERSION', '1.4.0' );
 define( 'RCC_PLUGIN_FILE', __FILE__ );
 define( 'RCC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'RCC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -39,6 +39,9 @@ require_once RCC_PLUGIN_DIR . 'includes/vendors.php';
 require_once RCC_PLUGIN_DIR . 'includes/frontend.php';
 require_once RCC_PLUGIN_DIR . 'includes/script-blocking.php';
 require_once RCC_PLUGIN_DIR . 'includes/cookie-declaration.php';
+require_once RCC_PLUGIN_DIR . 'includes/consent.php';
+require_once RCC_PLUGIN_DIR . 'includes/cookie-registry.php';
+require_once RCC_PLUGIN_DIR . 'includes/wp-consent-api.php';
 require_once RCC_PLUGIN_DIR . 'includes/consent-log.php';
 require_once RCC_PLUGIN_DIR . 'includes/stats.php';
 require_once RCC_PLUGIN_DIR . 'includes/scanner.php';
