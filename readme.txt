@@ -4,7 +4,7 @@ Tags: cookies, consent, gdpr, google analytics, google tag manager, meta pixel
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -56,6 +56,10 @@ Redan laddade skript kan inte "avladdas", men inga nya anrop görs. Kända förs
 Lägg `define( 'RCC_GITHUB_TOKEN', 'github_pat_...' );` i wp-config.php. En fine-grained token med läsrättighet till Contents räcker.
 
 == Changelog ==
+
+= 1.4.1 =
+* Rättat: med Google Tag Manager i läget "Alltid" fick Google-taggarna besökarens sparade val först efter att GTM laddats, så första sidvisningen för återkommande besökare skickades utan cookies. Ett sparat val sätts nu direkt efter Consent Mode-defaulten, innan GTM laddas.
+* Läget "Blockerad tills samtycke" och besökare utan sparat val påverkas inte. Inga besökare behöver samtycka om.
 
 = 1.4.0 =
 * Kakregister: andra tillägg registrerar sina cookies med filtret rcc_registered_cookies. De listas i cookiedeklarationen och raderas när besökaren nekar kategorin.

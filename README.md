@@ -74,7 +74,7 @@ Två lägen under Verktyg:
 
 **Blockerad tills samtycke (standard).** Containern laddas först när besökaren samtyckt till statistik eller marknadsföring. Säkrast om ni inte hanterar samtycke inne i GTM. Taggarna i containern bör ändå ha samtyckeskontroller inställda, så att en marknadsföringstagg inte körs för en besökare som bara godkänt statistik.
 
-**Alltid, med Consent Mode v2.** Containern laddas direkt. Pluginet skickar `gtag('consent', 'default', ...)` med allt nekat innan GTM laddas och `gtag('consent', 'update', ...)` när besökaren väljer. Dessutom pushas eventet `rcc_consent_update` till dataLayer med variablerna `rcc_statistics` och `rcc_marketing` (true/false), som ni kan använda som trigger. I det här läget måste varje tagg i GTM ha "Ytterligare samtycke krävs" eller inbyggda samtyckeskontroller, annars sätter de cookies utan samtycke.
+**Alltid, med Consent Mode v2.** Containern laddas direkt. Pluginet skickar `gtag('consent', 'default', ...)` med allt nekat innan GTM laddas och `gtag('consent', 'update', ...)` när besökaren väljer. Har besökaren redan ett gällande val skickas `update` direkt efter defaulten, också innan GTM laddas, så att taggar på Consent Initialization och Initialization (t.ex. Google-taggen) har rätt samtyckesläge från första träffen. Dessutom pushas eventet `rcc_consent_update` till dataLayer med variablerna `rcc_statistics` och `rcc_marketing` (true/false), som ni kan använda som trigger. I det här läget måste varje tagg i GTM ha "Ytterligare samtycke krävs" eller inbyggda samtyckeskontroller, annars sätter de cookies utan samtycke.
 
 ## Samtyckeslogg och samtyckesversion
 
@@ -232,7 +232,7 @@ add_filter( 'rcc_rest_config', function ( $config, $settings ) {
 1. **Hämta konfigurationen** vid bygget eller med kort cache (svaret får cachas i fem minuter). Rendera rutan i egen design med `texts`. Länka `privacy_url` med `privacy_link_text`. En relativ `privacy_url` gäller frontendens domän.
 2. **Cookien** sätts på frontendens domän, med samma namn och format som pluginets JS: JSON `{ necessary: true, statistics, marketing, id, version, timestamp }`, URL-kodad med `encodeURIComponent`, `path=/`, `SameSite=Lax`, `Secure` på https och `expires` om `cookie.expiry_days` dagar. `id` genereras av frontend: 20 tecken ur `ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789`, med `crypto.getRandomValues`. ID:t behålls när besökaren ändrar sitt val, även efter en versionshöjning. `version` är `consent_version` ur konfigurationen och `timestamp` är ISO 8601 (`new Date().toISOString()`).
 3. **Versionen avgör om samtycket gäller.** Saknas cookien, eller är dess `version` en annan än konfigurationens `consent_version`, visas rutan och inga verktyg laddas. En cookie utan `version` räknas som version 1, som i pluginet.
-4. **Consent Mode v2.** Kör `gtag('consent', 'default', consent_mode_defaults)` innan något Google-skript laddas. När besökaren väljer (och vid sidladdning när ett giltigt samtycke redan finns) kör du `gtag('consent', 'update', …)` med samma mappning som pluginet:
+4. **Consent Mode v2.** Kör `gtag('consent', 'default', consent_mode_defaults)` innan något Google-skript laddas. Finns ett giltigt samtycke redan, kör `gtag('consent', 'update', …)` direkt efter, också innan Google-skripten och GTM laddas; annars kör Google-taggen på Initialization med allt nekat. När besökaren väljer kör du `update` igen. Mappningen är densamma som pluginets:
 
    | Consent Mode | Följer |
    | --- | --- |
@@ -376,24 +376,31 @@ export function logConsent(config: RccConfig, consent: RccConsent): void {
   }).catch(() => {});
 }
 
-/** Måste köras innan något Google-skript laddas. */
-export function initConsentMode(config: RccConfig): void {
-  window.dataLayer = window.dataLayer || [];
-  // gtag kräver arguments-objektet, inte en array.
-  window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
-  window.gtag('consent', 'default', config.consent_mode_defaults);
-}
-
 const granted = (yes: boolean) => (yes ? 'granted' : 'denied');
 
-export function applyConsent(consent: RccConsent): void {
-  window.gtag?.('consent', 'update', {
+function consentModeState(consent: RccConsent) {
+  return {
     analytics_storage: granted(consent.statistics),
     ad_storage: granted(consent.marketing),
     ad_user_data: granted(consent.marketing),
     ad_personalization: granted(consent.marketing),
     personalization_storage: granted(consent.marketing),
-  });
+  };
+}
+
+/** Måste köras innan något Google-skript (även GTM) laddas. */
+export function initConsentMode(config: RccConfig): void {
+  window.dataLayer = window.dataLayer || [];
+  // gtag kräver arguments-objektet, inte en array.
+  window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+  window.gtag('consent', 'default', config.consent_mode_defaults);
+  // Ett sparat val sätts direkt, så att GTM:s Initialization har rätt läge.
+  const saved = getConsent(config);
+  if (saved) window.gtag('consent', 'update', consentModeState(saved));
+}
+
+export function applyConsent(consent: RccConsent): void {
+  window.gtag?.('consent', 'update', consentModeState(consent));
   window.dataLayer = window.dataLayer || [];
   window.dataLayer.push({
     event: 'rcc_consent_update',
@@ -648,6 +655,7 @@ Se [Följa samtycket från ett annat plugin](#följa-samtycket-från-ett-annat-p
 | `rcc_settings` | filter | Åsidosätt sparade värden i kod (t.ex. tomt GA-ID på staging). |
 | `rcc_cookie_name` | filter | Namnet på samtyckescookien. |
 | `rcc_consent_mode_defaults` | filter | Utgångsläget för Consent Mode v2. |
+| `rcc_early_consent_update` | filter | Skicka ett sparat val som `gtag('consent', 'update')` direkt efter defaulten i `<head>`. På som standard när GTM laddas i läget "Alltid"; returnera true om temat eller ett annat plugin laddar Google-taggar oblockerat (args: `$enabled`, `$settings`). |
 | `rcc_gated_iframe_hosts` | filter | Fler värdar vars iframes blockeras, t.ex. `'google.com/maps' => 'marketing'`. |
 | `rcc_blocked_domains` | filter | Domäner (skript och iframes) att blockera utöver listorna i admin: `$domains['example.com'] = 'marketing'`. |
 | `rcc_known_domains` | filter | Skannerns kända domäner med namn, föreslagen kategori och signaturer för inline-skript. |

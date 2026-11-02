@@ -95,17 +95,64 @@ function rcc_consent_mode_defaults() {
 }
 
 /**
+ * Ska ett sparat samtycke sättas i Consent Mode redan i <head>, direkt
+ * efter defaulten? Behövs när Google-taggar laddas utan att vänta på
+ * pluginets JS, dvs. GTM i läget "alltid": utan det kör Google-taggen på
+ * Initialization med defaulten (allt nekat) även för en besökare som
+ * redan godkänt, och första sidvisningen blir en cookielös ping.
+ *
+ * I övriga lägen laddas alla Google-taggar först när JS-filen aktiverat
+ * dem, och då har uppdateringen redan skickats. Filtret
+ * rcc_early_consent_update slår på det även för Google-taggar som temat
+ * eller ett annat plugin laddar oblockerat.
+ */
+function rcc_early_consent_update_enabled( $s ) {
+	$enabled = ! empty( $s['gtm_container_id'] ) && 'always' === $s['gtm_load_mode'];
+	return (bool) apply_filters( 'rcc_early_consent_update', $enabled, $s );
+}
+
+/**
  * Skriver ut defaulten ovan. Separerad från arrayen så att
  * REST-endpointet /rcc/v1/config kan lämna ut samma värden, inklusive
  * sajtens anpassning via filtret rcc_consent_mode_defaults.
+ *
+ * När rcc_early_consent_update_enabled() gäller läses samtyckescookien
+ * synkront i webbläsaren och ett gällande val skickas som
+ * gtag('consent', 'update') innan GTM-snippeten (prioritet 3) körs. GTM
+ * bearbetar dataLayer i ordning, så taggarna har rätt läge redan vid
+ * Consent Initialization och Initialization. Cookien läses i JS och inte
+ * i PHP, så att sidcache aldrig kan baka in en annan besökares val.
+ * Tolkningen är densamma som isCurrent()/normalize() i
+ * relativt-cookie-consent.js (saknad version = 1, !!kategori), och
+ * mappningen densamma som applyConsent() där. Eventet rcc_consent_update
+ * skickas fortfarande av JS-filen, som förut.
  */
 function rcc_output_consent_mode_default() {
 	$defaults = rcc_consent_mode_defaults();
+	$early    = rcc_early_consent_update_enabled( rcc_get_settings() );
 	?>
 	<script data-rcc-core="1">
 	window.dataLayer = window.dataLayer || [];
 	function gtag(){ dataLayer.push(arguments); }
 	gtag('consent', 'default', <?php echo wp_json_encode( $defaults ); ?>);
+<?php if ( $early ) : ?>
+	(function(name, version){
+		try {
+			var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'));
+			if (!m) { return; }
+			var c = JSON.parse(decodeURIComponent(m[1]));
+			if (!c || typeof c !== 'object' || (parseInt(c.version, 10) || 1) !== version) { return; }
+			var g = function(yes){ return yes ? 'granted' : 'denied'; };
+			gtag('consent', 'update', {
+				analytics_storage: g(c.statistics),
+				ad_storage: g(c.marketing),
+				ad_user_data: g(c.marketing),
+				ad_personalization: g(c.marketing),
+				personalization_storage: g(c.marketing)
+			});
+		} catch (e) {}
+	})(<?php echo wp_json_encode( rcc_cookie_name(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ); ?>, <?php echo (int) rcc_current_consent_version(); ?>);
+<?php endif; ?>
 	</script>
 	<?php
 }

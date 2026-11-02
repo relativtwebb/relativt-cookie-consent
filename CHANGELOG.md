@@ -8,6 +8,32 @@ Texten under en versionsrubrik används som release-text på GitHub och visas
 under "Visa detaljer" i WP-admin på sajterna som kör pluginet, så skriv för
 den som ska uppdatera.
 
+## [1.4.1] - 2026-11-02
+
+Rättar datatappet i GA4 och Google Ads för återkommande besökare när
+Google Tag Manager laddas i läget "Alltid". Inga besökare behöver samtycka
+om, och inga inställningar behöver ändras.
+
+- **Rättat: sparat samtycke når GTM för sent.** Pluginet satte Consent
+  Mode till `denied` som standard och återställde besökarens sparade val
+  först när sidan laddats klart, efter GTM. Google-taggen körs på
+  Initialization och skickade därför den första sidvisningen som en
+  cookielös ping, även för besökare som redan godkänt. Nu läses
+  samtyckescookien direkt efter defaulten i `<head>` och ett gällande val
+  skickas som `gtag('consent', 'update', …)` innan GTM-snippeten körs.
+  Cookien läses i webbläsaren, så sidcache påverkar inte.
+- Besökare utan sparat val, eller med ett val från en äldre
+  samtyckesversion, får `denied` som förut.
+- dataLayer-eventet `rcc_consent_update` skickas som förut: vid varje
+  sidladdning med sparat val och vid varje val. Triggers för Meta,
+  LinkedIn, Reddit, Microsoft UET, Hotjar, Clarity m.fl. fungerar som
+  tidigare.
+- Läget "Blockerad tills samtycke" ändras inte; HTML:en är densamma som
+  i 1.4.0.
+- Nytt filter `rcc_early_consent_update` för att slå på samma tidiga
+  uppdatering när temat eller ett annat plugin laddar Google-taggar
+  oblockerat.
+
 ## [1.4.0] - 2026-10-02
 
 Gör det lätt och säkert för andra plugin (t.ex. Relativt Formulär) att
